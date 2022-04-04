@@ -537,6 +537,11 @@ li.is-not-active b a {
   color: var(--text);
 }
 
+.load-error {
+  margin-top: 2rem;
+  text-align: center;
+}
+
 @media only screen and (max-width: 50em) {
   .tabholdercontainer {
     margin: 0 1rem;

@@ -38,7 +38,6 @@
     .commands
       button.button(:class="{'is-dark' : state.isDarkMode}" @click="onScan" :title="$t('sync')"): i.fa.fa-sync
       button.button(:class="{'is-dark' : state.isDarkMode}" @click="onDarkLight" :title="$t('theme')"): i.fa.fa-adjust
-      button.button(:class="{'is-dark' : state.isDarkMode}" @click="onLanguage" :title="$t('lang')"): i.fa.fa-globe
       button.button(v-if="state.statusErrors.length" :class="{'is-dark' : state.isDarkMode}" style="background-color: red; color: white; border-color: red" @click="onWarning" :title="$t('lang')"): i.fa.fa-exclamation-triangle
       button.button(v-if="!state.statusErrors.length && state.statusWarnings.length" :class="{'is-dark' : state.isDarkMode}" style="background-color: yellow; border-color: yellow" @click="onWarning" :title="$t('lang')"): i.fa.fa-exclamation-triangle
       button.button(v-if="!state.statusErrors.length && !state.statusWarnings.length" :class="{'is-dark' : state.isDarkMode}" @click="onWarning" :title="$t('lang')"): i.fa.fa-exclamation-triangle

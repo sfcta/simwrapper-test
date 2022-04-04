@@ -47,7 +47,7 @@ const i18n = {
   messages: {
     en: {
       'more-info': 'Documentation:',
-      tagLine: 'the simulation browser and data visualizer from TU&nbsp;Berlin.',
+      tagLine: 'The SFCTA simulation browser and data visualizer',
     },
     de: {
       'more-info': 'Für weitere Informationen:',

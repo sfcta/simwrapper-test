@@ -46,30 +46,17 @@ const fileSystems: FileSystemConfig[] = [
     thumbnail: '/simwrapper/images/thumb-localfiles.jpg',
   },
   {
-    name: 'Public Scenarios',
-    slug: 'public',
-    description: 'Simulation results from VSP at TU-Berlin',
-    baseURL: 'https://svn.vsp.tu-berlin.de/repos/public-svn/matsim/scenarios/countries',
-    thumbnail: '/simwrapper/images/thumb-chart.jpg',
-    skipList: ['episim/battery'],
+    name: 'SFCTA Prospector',
+    slug: 'champ',
+    description: 'Shared CHAMP model runs',
+    baseURL: 'http://prospector/champ_runs',
   },
   {
-    name: 'Sample Runs',
-    slug: 'sample-runs',
-    description: 'Pre-built dashboards for exploration',
-    thumbnail: 'images/thumb-localfiles.jpg',
+    name: 'Sample Data',
+    slug: 'samples',
+    description: 'Some test data for SFCTA',
     baseURL: 'https://svn.vsp.tu-berlin.de/repos/public-svn/shared/billy/simwrapper/sample-data',
-    hidden: true,
-  },
-  {
-    name: 'KoMoDnext',
-    slug: 'komodnext',
-    description: 'Automated driving in the digital test field, Düsseldorf',
-    description_de: 'Automatisiertes Fahren im digitalen Testfeld Düsseldorf',
-    baseURL:
-      'https://svn.vsp.tu-berlin.de/repos/public-svn/matsim/scenarios/countries/de/duesseldorf/projects/komodnext/website',
     thumbnail: '/simwrapper/images/thumb-localfiles.jpg',
-    hidden: true,
   },
 ]
 

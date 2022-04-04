@@ -12,6 +12,7 @@
     "deploy-vsp": "bash scripts/deploy-ghpages.sh matsim-vsp/simwrapper simwrapper",
     "deploy-staging": "bash scripts/deploy-ghpages.sh simwrapper/staging staging",
     "deploy-asim": "bash scripts/deploy-ghpages.sh ActivitySim/dashboard dashboard",
+    "deploy-sfcta": "bash scripts/deploy-ghpages.sh sfcta/simwrapper simwrapper",
     "serve": "vite",
     "build": "vite build",
     "release": "standard-version",

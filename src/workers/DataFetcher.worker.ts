@@ -152,8 +152,6 @@ function parseCsvFile(fileKey: string, filename: string, text: string) {
   // prepare storage object -- figure out records and columns
   const dataTable: DataTable = {}
 
-  let rowCount = 0
-
   const csv = Papaparse.parse(text, {
     // preview: 10000,
     delimitersToGuess: ['\t', ';', ',', ' '],

@@ -13,9 +13,6 @@ import {
 } from '@/Globals'
 import fileSystems from '@/fileSystemConfig'
 import { MAP_STYLES_ONLINE, MAP_STYLES_OFFLINE } from '@/Globals'
-import { debounce } from '@/js/util'
-import SVNFileSystem from './js/HTTPFileSystem'
-import { StaticReadUsage } from 'three'
 
 // ----------------------------------------
 
@@ -25,15 +22,9 @@ const initialViewState = () => ({
   pitch: 0,
   bearing: 0,
   maxZoom: 22,
-  // longitude: -122.4,
-  // latitude: 37.78,
-  // zoom: 10.5,
-  // longitude: 13.45,
-  // latitude: 52.5,
-  // zoom: 8,
-  longitude: 10,
-  latitude: 50,
-  zoom: 9,
+  longitude: -122.4,
+  latitude: 37.78,
+  zoom: 10,
 })
 
 export default new Vuex.Store({
