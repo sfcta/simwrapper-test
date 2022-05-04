@@ -1,4 +1,5 @@
 import micromatch from 'micromatch'
+import pako from 'pako'
 import { DirectoryEntry, FileSystemAPIHandle, FileSystemConfig, YamlConfigs } from '@/Globals'
 
 const YAML_FOLDER = 'simwrapper'
@@ -36,6 +37,7 @@ class SVNFileSystem {
     // console.log('CLEAN: ', path)
 
     path = path.replaceAll('//', '/')
+    path = path.replaceAll('//', '/') // twice just in case!
     path = path.replace('https:/', 'https://')
     path = path.replace('http:/', 'http://')
     // console.log('CLEAN2: ', path)
@@ -127,7 +129,14 @@ class SVNFileSystem {
     // here so the code further up can deal with errors properly.
     // "Throw early, catch late."
     const response = await this._getFileResponse(scaryPath)
-    return response.json()
+    const blob = await response.blob()
+    const buffer = await blob.arrayBuffer()
+
+    // recursively gunzip until it can gunzip no more:
+    const unzipped = this.gUnzip(buffer)
+
+    const text = new TextDecoder('utf-8').decode(unzipped)
+    return JSON.parse(text)
   }
 
   async getFileBlob(scaryPath: string): Promise<Blob> {
@@ -305,18 +314,30 @@ class SVNFileSystem {
   }
 
   private buildListFromNGINX(data: string): DirectoryEntry {
+    const regex = /"(.*?)"/
     const dirs = []
     const files = []
 
     const lines = data.split('\n')
+
     for (const line of lines) {
-      const start = line.indexOf('<a href="')
-      if (start < 0) continue
-      const entry = line.substring(start + 9, line.indexOf('">'))
+      // match rows listing href links only: should be all folders/files only
+      const href = line.indexOf('<a href="')
+      if (href < 0) continue
+
+      const entry = line.substring(href).match(regex)
       if (!entry) continue
 
-      if (entry.endsWith('/')) dirs.push(entry.substring(0, entry.length - 1))
-      else files.push(entry)
+      const name = entry[1] // regex returns first match in [1]
+
+      // skip parent link
+      if (name === '../') continue
+
+      if (name.endsWith('/')) {
+        dirs.push(name.substring(0, name.length - 1))
+      } else {
+        files.push(name)
+      }
     }
     return { dirs, files, handles: {} }
   }
@@ -395,6 +416,20 @@ class SVNFileSystem {
       else files.push(name)
     }
     return { dirs, files, handles: {} }
+  }
+
+  /**
+   * This recursive function gunzips the buffer. It is recursive because
+   * some combinations of subversion, nginx, and various web browsers
+   * can single- or double-gzip .gz files on the wire. It's insane but true.
+   */
+  private gUnzip(buffer: any): Uint8Array {
+    // GZIP always starts with a magic number, hex $8b1f
+    const header = new Uint8Array(buffer.slice(0, 2))
+    if (header[0] === 0x1f && header[1] === 0x8b) {
+      return this.gUnzip(pako.inflate(buffer))
+    }
+    return buffer
   }
 }
 

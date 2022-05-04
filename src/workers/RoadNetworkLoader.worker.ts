@@ -3,49 +3,49 @@
 // Pass in a filename; can be MATSim network.xml.gz or preprocessed GeoJSON
 // Get a table of links with Anode Bnode and properties
 
-import PROJ4 from 'proj4'
-import EPSG from 'epsg'
-// import pako from 'pako'
 import { decompressSync } from 'fflate'
-
 import { XMLParser } from 'fast-xml-parser'
+import EPSGdefinitions from 'epsg'
+import reproject from 'reproject'
+import * as shapefile from 'shapefile'
 
-// import { parseXML } from '@/js/util'
-
+import Coords from '@/js/Coords'
+import DBF from '@/js/dbfReader'
 import HTTPFileSystem from '@/js/HTTPFileSystem'
 import { FileSystemConfig } from '@/Globals'
 
 enum NetworkFormat {
   MATSIM_XML,
   GEOJSON,
-  DBF,
+  SFCTA,
 }
 
-// Set up ALL coordinate systems in 'epsg' repository
-const allEPSGs = Object.entries(EPSG).filter(row => row[0].startsWith('EPSG') && row[1]) as any
-PROJ4.defs(allEPSGs)
-PROJ4.defs(
-  'GK4',
-  '+proj=tmerc +lat_0=0 +lon_0=12 +k=1 +x_0=4500000 +y_0=0 +ellps=bessel +datum=potsdam +units=m +no_defs'
-)
+// We ignore some node properties
+const ignore = ['X', 'Y']
+const nodePropsToIgnore = new Set()
+ignore.forEach(key => nodePropsToIgnore.add(key))
+
+let _xml = {} as any
 
 // ENTRY POINT: -----------------------
 onmessage = async function (e) {
-  const { id, filePath, fileSystem, options } = e.data
+  if (e.data.crs) {
+    parseXmlNetworkAndPostResults(e.data.crs)
+  } else {
+    const { id, filePath, fileSystem, vizDetails, options } = e.data
 
-  // guess file type from extension
-  const format = guessFileTypeFromExtension(filePath)
+    // guess file type from extension
+    const format = guessFileTypeFromExtension(filePath)
 
-  // fetch nodes and links
-  const { links, linkOffsetLookup } = await fetchNodesAndLinks({
-    format,
-    filePath,
-    fileSystem,
-    options,
-  })
-
-  // postMessage({ links, linkOffsetLookup }, [links.source.buffer, links.dest.buffer])
-  postMessage({ links }, [links.source.buffer, links.dest.buffer])
+    // fetch nodes and links
+    fetchNodesAndLinks({
+      format,
+      filePath,
+      fileSystem,
+      vizDetails,
+      options,
+    })
+  }
 }
 
 function guessFileTypeFromExtension(name: string) {
@@ -55,7 +55,7 @@ function guessFileTypeFromExtension(name: string) {
   if (/\.xml(|\.gz)$/.test(f)) return NetworkFormat.MATSIM_XML
   if (/\.json(|\.gz)$/.test(f)) return NetworkFormat.GEOJSON
   if (/\.geojson(|\.gz)$/.test(f)) return NetworkFormat.GEOJSON
-  if (/\.dbf(|\.gz)$/.test(f)) return NetworkFormat.DBF
+  if (/\.shp$/.test(f)) return NetworkFormat.SFCTA
 
   // No idea; guess MATSim.
   return NetworkFormat.MATSIM_XML
@@ -65,44 +65,200 @@ async function fetchNodesAndLinks(props: {
   format: NetworkFormat
   filePath: string
   fileSystem: FileSystemConfig
+  vizDetails: any
   options: any
 }): Promise<any> {
-  const { format, filePath, fileSystem, options } = props
+  const { format, filePath, fileSystem, vizDetails, options } = props
 
   switch (format) {
     case NetworkFormat.GEOJSON:
       return fetchGeojson(filePath, fileSystem)
     case NetworkFormat.MATSIM_XML:
       return fetchMatsimXmlNetwork(filePath, fileSystem, options)
+    case NetworkFormat.SFCTA:
+      return fetchSFCTANetwork(filePath, fileSystem, vizDetails)
     default:
       break
   }
 }
 
+async function fetchSFCTANetwork(filePath: string, fileSystem: FileSystemConfig, vizDetails: any) {
+  console.log('WORKER loading shapefile', filePath)
+
+  const fileApi = new HTTPFileSystem(fileSystem)
+  const url = filePath
+  let nodes: any = {}
+
+  // first, get shp/dbf files
+  try {
+    const shpPromise = fileApi.getFileBlob(url)
+    const dbfPromise = fileApi.getFileBlob(url.replace('.shp', '.dbf'))
+    await Promise.all([shpPromise, dbfPromise])
+
+    const shpBlob = await (await shpPromise)?.arrayBuffer()
+    const dbfBlob = await (await dbfPromise)?.arrayBuffer()
+    if (!shpBlob || !dbfBlob) return []
+
+    nodes = await shapefile.read(shpBlob, dbfBlob)
+  } catch (e) {
+    console.error(e)
+    return []
+  }
+
+  // next, see if there is a .prj file with projection information
+  let projection = vizDetails.projection
+  if (!projection) {
+    try {
+      projection = await fileApi.getFileText(url.replace('.shp', '.prj'))
+    } catch (e) {
+      // lol we can live without a projection
+    }
+  }
+
+  const guessCRS = Coords.guessProjection(projection)
+  // then, reproject if we have a projection
+  if (guessCRS && guessCRS !== 'EPSG:4326') {
+    nodes = reproject.toWgs84(nodes, guessCRS, EPSGdefinitions)
+  }
+
+  // OK we now have NODES in geojson.features!! ----------------------------------------
+  console.log({ nodes })
+
+  // build node coord lookup map
+  const nodeLookup: { [id: string]: { properties: any; coords: number[] } } = {}
+  for (const node of nodes.features) {
+    // console.log(node.properties.N)
+    // node lookup IDs must be strings
+    const id = '' + node.properties['N']
+    nodeLookup[id] = {
+      properties: node.properties,
+      coords: node.geometry.coordinates,
+    }
+  }
+
+  // Download links data from first link datafile specified
+  const linksFilename = Array.isArray(vizDetails.links) ? vizDetails.links[0] : vizDetails.links
+  const linksPath = `${filePath.substring(0, filePath.lastIndexOf('/'))}/${linksFilename}`
+
+  const blob = await fileApi.getFileBlob(linksPath)
+  const buffer = await blob.arrayBuffer()
+  const dataTable = DBF(buffer, new TextDecoder('windows-1252')) // DBF has weird text
+
+  console.log({ dataTable })
+
+  const linkIds: any = []
+
+  // build link array from columnar data
+  const numLinks = dataTable.A.values.length
+  const links = [] as any[]
+  const keys = Object.keys(dataTable)
+  for (let i = 0; i < numLinks; i++) {
+    links[i] = {}
+    linkIds.push(dataTable.AB.values[i])
+    for (const key of keys) {
+      links[i][key] = dataTable[key].values[i]
+    }
+  }
+
+  const source: Float32Array = new Float32Array(2 * numLinks)
+  const dest: Float32Array = new Float32Array(2 * numLinks)
+
+  const outputLinks: any[] = []
+  let warnings = 0
+
+  // link source/dest coordinate lookup
+  for (let j = 0; j < numLinks; j++) {
+    const anode = nodeLookup[links[j].A]
+    const bnode = nodeLookup[links[j].B]
+
+    source[2 * j + 0] = anode.coords[0]
+    source[2 * j + 1] = anode.coords[1]
+    dest[2 * j + 0] = bnode.coords[0]
+    dest[2 * j + 1] = bnode.coords[1]
+  }
+
+  // all done! post the links
+  const linkCoordinates = { source, dest, linkIds }
+
+  postMessage({ links: linkCoordinates }, [
+    linkCoordinates.source.buffer,
+    linkCoordinates.dest.buffer,
+  ])
+
+  // // add coordinates to links
+  // links.forEach(link => {
+  //   try {
+  //     const row = Object.assign({}, link) as any
+  //     // add A_coords, B_coords
+  //     row.A_xy = nodeLookup[link.A].coords
+  //     row.B_xy = nodeLookup[link.B].coords
+  //     // add node properties
+  //     Object.keys(nodeLookup[link.A].properties).forEach(key => {
+  //       if (nodePropsToIgnore.has(key)) return
+  //       row[`${key}_A`] = nodeLookup[link.A].properties[key]
+  //     })
+  //     Object.keys(nodeLookup[link.B].properties).forEach(key => {
+  //       if (nodePropsToIgnore.has(key)) return
+  //       row[`${key}_B`] = nodeLookup[link.B].properties[key]
+  //     })
+  //     outputLinks.push(row)
+  //   } catch (e) {
+  //     console.warn('link problem:', link)
+  //     warnings++
+  //   }
+  // })
+  if (warnings) console.error('FIX YOUR NETWORK:', warnings, 'LINKS WITH NODE LOOKUP PROBLEMS')
+  // return outputLinks
+
+  // return geojson.features as any[]
+}
+
+//   const rawData = await fetchGzip(filePath, fileSystem)
+//   const decoded = new TextDecoder('utf-8').decode(rawData)
+//   _xml = await parseXML(decoded, options)
+
+//   // What is the CRS?
+//   let coordinateReferenceSystem = ''
+
+//   const attribute = _xml.network.attributes?.attribute
+//   if (attribute?.$name === 'coordinateReferenceSystem') {
+//     coordinateReferenceSystem = attribute['#text']
+//     console.log('CRS', coordinateReferenceSystem)
+//     parseXmlNetworkAndPostResults(coordinateReferenceSystem)
+//   } else {
+//     // We don't have CRS: send msg to UI thread to ask for it. We'll pick it up later.
+//     postMessage({ promptUserForCRS: 'crs needed' })
+//   }
+// }
+
 async function fetchMatsimXmlNetwork(filePath: string, fileSystem: FileSystemConfig, options: any) {
   const rawData = await fetchGzip(filePath, fileSystem)
   const decoded = new TextDecoder('utf-8').decode(rawData)
-  const xml: any = await parseXML(decoded, options)
-
-  console.log({ xml })
+  _xml = await parseXML(decoded, options)
 
   // What is the CRS?
   let coordinateReferenceSystem = ''
 
-  const attribute = xml.network.attributes.attribute
-  if (attribute.$name === 'coordinateReferenceSystem')
+  const attribute = _xml.network.attributes?.attribute
+  if (attribute?.$name === 'coordinateReferenceSystem') {
     coordinateReferenceSystem = attribute['#text']
+    console.log('CRS', coordinateReferenceSystem)
+    parseXmlNetworkAndPostResults(coordinateReferenceSystem)
+  } else {
+    // We don't have CRS: send msg to UI thread to ask for it. We'll pick it up later.
+    postMessage({ promptUserForCRS: 'crs needed' })
+  }
+}
 
-  console.log('CRS', coordinateReferenceSystem)
-
+function parseXmlNetworkAndPostResults(coordinateReferenceSystem: string) {
   // build node/coordinate lookup
   const nodes: { [id: string]: number[] } = {}
-  for (const node of xml.network.nodes.node as any) {
+  for (const node of _xml.network.nodes.node as any) {
     const coordinates = [parseFloat(node.$x), parseFloat(node.$y)]
 
     // convert coordinates to long/lat if necessary
     const longlat = coordinateReferenceSystem
-      ? (PROJ4(coordinateReferenceSystem, 'EPSG:4326', coordinates) as any)
+      ? Coords.toLngLat(coordinateReferenceSystem, coordinates)
       : coordinates
 
     nodes[node.$id] = longlat
@@ -112,13 +268,13 @@ async function fetchMatsimXmlNetwork(filePath: string, fileSystem: FileSystemCon
 
   // build links
 
-  const source: Float32Array = new Float32Array(2 * xml.network.links.link.length)
-  const dest: Float32Array = new Float32Array(2 * xml.network.links.link.length)
+  const source: Float32Array = new Float32Array(2 * _xml.network.links.link.length)
+  const dest: Float32Array = new Float32Array(2 * _xml.network.links.link.length)
 
   const linkIds: any = []
 
-  for (let i = 0; i < xml.network.links.link.length; i++) {
-    const link = xml.network.links.link[i]
+  for (let i = 0; i < _xml.network.links.link.length; i++) {
+    const link = _xml.network.links.link[i]
     // linkOffsetLookup[link.$id] = i
     linkIds[i] = link.$id
 
@@ -130,7 +286,8 @@ async function fetchMatsimXmlNetwork(filePath: string, fileSystem: FileSystemCon
 
   const links = { source, dest, linkIds }
 
-  return { links }
+  // all done! post the links
+  postMessage({ links }, [links.source.buffer, links.dest.buffer])
 }
 
 async function fetchGeojson(filePath: string, fileSystem: FileSystemConfig) {
@@ -171,7 +328,9 @@ async function fetchGeojson(filePath: string, fileSystem: FileSystemConfig) {
     linkIds[i] = feature.id || feature.properties.id
   }
 
-  return { links: { source, dest, linkIds } }
+  const links = { source, dest, linkIds }
+  // all done! post the links
+  postMessage({ links }, [links.source.buffer, links.dest.buffer])
 }
 
 async function fetchGzip(filePath: string, fileSystem: FileSystemConfig) {
