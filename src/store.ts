@@ -17,14 +17,13 @@ import { MAP_STYLES_ONLINE, MAP_STYLES_OFFLINE } from '@/Globals'
 // ----------------------------------------
 
 const initialViewState = () => ({
-  // start with western europe for now
   initial: true,
   pitch: 0,
   bearing: 0,
-  maxZoom: 22,
   longitude: -122.4,
   latitude: 37.78,
-  zoom: 10,
+  zoom: 9,
+  maxZoom: 24,
 })
 
 export default new Vuex.Store({

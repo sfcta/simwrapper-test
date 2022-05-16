@@ -4,8 +4,8 @@
     .widget
         b-select.selector(expanded v-model="dataColumn")
           option(label="Single color" value="")
-          optgroup(v-for="dataset in datasetChoices()"
-                  :key="dataset" :label="dataset")
+
+          optgroup(v-for="dataset in datasetChoices()" :key="dataset" :label="dataset")
             option(v-for="column in columnsInDataset(dataset)" :value="`${dataset}/${column}`" :label="column")
 
   .colorbar.single(v-show="!dataColumn")
@@ -65,7 +65,7 @@ interface Ramp {
   steps?: number
 }
 
-export interface ColorDefinition {
+export interface FillColorDefinition {
   dataset: string
   columnName: string
   colorRamp?: Ramp
@@ -83,7 +83,7 @@ export default class VueComponent extends Vue {
     { ramp: 'Viridis', style: style.sequential, reverse: true }, // , reverse: true },
     { ramp: 'Plasma', style: style.sequential, reverse: true }, // , reverse: true },
     { ramp: 'Blues', style: style.sequential }, // , reverse: true },
-    // { ramp: 'Greens', style: style.sequential }, // , reverse: true },
+    { ramp: 'Greens', style: style.sequential }, // , reverse: true },
     { ramp: 'Purples', style: style.sequential }, // , reverse: true },
     { ramp: 'Oranges', style: style.sequential }, // , reverse: true },
     { ramp: 'PRGn', style: style.diverging, reverse: true },
@@ -106,17 +106,27 @@ export default class VueComponent extends Vue {
   private mounted() {
     this.datasetLabels = Object.keys(this.vizConfiguration.datasets)
     this.datasetsAreLoaded()
+    this.vizConfigChanged()
   }
 
   private isFirstDataset = true
 
   @Watch('vizConfiguration')
   private vizConfigChanged() {
-    const config = this.vizConfiguration.display?.color
+    const config = this.vizConfiguration.display?.fill
     if (config?.columnName) {
       const selectedColumn = `${config.dataset}/${config.columnName}`
       this.dataColumn = selectedColumn
       this.datasetLabels = [...this.datasetLabels]
+      if (config.colorRamp) {
+        let colorChoice =
+          this.colorChoices.find(f => f.ramp == config.colorRamp.ramp) || this.colorChoices[0]
+        this.selectedColor = colorChoice
+        this.steps = config.colorRamp.steps
+        this.flip = !!config.colorRamp.reverse
+      }
+    } else if (config?.generatedColors) {
+      this.clickedSingleColor(config.generatedColors[0])
     }
   }
 
@@ -125,29 +135,34 @@ export default class VueComponent extends Vue {
     const datasetIds = Object.keys(this.datasets)
     this.datasetLabels = datasetIds
 
-    // don't change colors if we already set them
-    if (!this.isFirstDataset) return
+    return
 
-    if (datasetIds.length) this.isFirstDataset = false
+    // // don't change colors if we already set them
+    // if (!this.isFirstDataset) return
 
-    const { dataset, columnName, colorRamp } = this.vizConfiguration.display.color
+    // if (datasetIds.length) this.isFirstDataset = false
 
-    if (dataset && columnName) {
-      console.log('SPECIFIED COLORS: ', dataset, columnName, colorRamp)
-      this.dataColumn = `${dataset}/${columnName}`
+    // let { dataset, columnName, colorRamp, values } = this.vizConfiguration.display.fill
 
-      if (colorRamp) {
-        this.selectedColor =
-          this.colorChoices.find(c => c.ramp.toLowerCase() === colorRamp.ramp.toLowerCase()) ||
-          this.colorChoices[0]
-        this.flip = !!colorRamp.reverse // ? !!this.selectedColor.reverse : !this.selectedColor.reverse // XOR
-        if (colorRamp.steps) this.steps = '' + colorRamp.steps
-      }
-    } else if (datasetIds.length) {
-      const secondColumn = Object.keys(this.datasets[datasetIds[0]])[1]
-      console.log(secondColumn)
-      if (secondColumn) this.dataColumn = `${datasetIds[0]}/${secondColumn}`
-    }
+    // if (!columnName && values) columnName = values[0]
+
+    // if (dataset && columnName) {
+    //   console.log('SPECIFIED COLORS: ', dataset, columnName, colorRamp)
+    //   this.dataColumn = `${dataset}/${columnName}`
+
+    //   if (colorRamp) {
+    //     this.selectedColor =
+    //       this.colorChoices.find(c => c.ramp.toLowerCase() === colorRamp.ramp.toLowerCase()) ||
+    //       this.colorChoices[0]
+    //     this.flip = !!colorRamp.reverse // ? !!this.selectedColor.reverse : !this.selectedColor.reverse // XOR
+    //     if (colorRamp.steps) this.steps = '' + colorRamp.steps
+    //   }
+    // } else if (datasetIds.length) {
+    //   // Grab the first useful column
+    //   // Only do this if user has NOT specified a starting column
+    //   const secondColumn = Object.keys(this.datasets[datasetIds[0]])[1]
+    //   if (secondColumn) this.dataColumn = `${datasetIds[0]}/${secondColumn}`
+    // }
   }
 
   @Watch('flip')
@@ -155,8 +170,6 @@ export default class VueComponent extends Vue {
   @Watch('dataColumn')
   @Watch('globalState.isDarkMode')
   private emitColorSpecification() {
-    if (!this.dataColumn) return
-
     const slash = this.dataColumn.indexOf('/')
 
     if (slash === -1) {
@@ -169,7 +182,7 @@ export default class VueComponent extends Vue {
     const generatedColors = this.buildColors(this.selectedColor, parseInt(this.steps))
 
     const steps = parseInt(this.steps)
-    const color = {
+    const fill = {
       dataset,
       columnName,
       generatedColors,
@@ -181,20 +194,20 @@ export default class VueComponent extends Vue {
       },
     }
 
-    setTimeout(() => this.$emit('update', { color }), 50)
+    setTimeout(() => this.$emit('update', { fill }), 50)
   }
 
   private clickedSingleColor(swatch: string) {
     this.selectedSingleColor = swatch
-    const color: ColorDefinition = {
+    const fill: FillColorDefinition = {
       generatedColors: [this.selectedSingleColor],
       dataset: '',
       columnName: '',
     }
 
-    // the link viewer is on main thread so lets make
+    // the viewer is on main thread so lets make
     // sure user gets some visual feedback
-    setTimeout(() => this.$emit('update', { color }), 50)
+    setTimeout(() => this.$emit('update', { fill }), 50)
   }
 
   private datasetChoices(): string[] {

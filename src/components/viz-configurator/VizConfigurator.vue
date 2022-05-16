@@ -12,9 +12,6 @@
   .configuration-panels(v-show="showPanels && !showAddDatasets")
     .section-panel
       .actions
-        //- .action(@click="clickedExport")
-        //-   i.fa.fa-sm.fa-share
-        //-   | &nbsp;Export
         b-dropdown(v-model="selectedExportAction"
           aria-role="list" position="is-bottom-left" :close-on-click="true"
           @change="clickedExport"
@@ -23,8 +20,8 @@
               b-button.is-small.is-white.export-button()
                 i.fa.fa-sm.fa-share
                 | &nbsp;Export
-            b-dropdown-item(value="png" aria-role="listitem") Take screenshot
             b-dropdown-item(value="yaml" aria-role="listitem") Save YAML config
+            b-dropdown-item(value="png" aria-role="listitem") Take screenshot
 
         b-button.is-small.is-white.export-button(@click="clickedAddData")
           i.fa.fa-sm.fa-plus
@@ -52,16 +49,28 @@
 <script lang="ts">
 import { Vue, Component, Watch, Prop } from 'vue-property-decorator'
 import YAML from 'yaml'
-
+import { startCase } from 'lodash'
 import AddDatasetsPanel from './AddDatasets.vue'
 import ColorPanel from './Colors.vue'
-import FillPanel from './Fill.vue'
-import WidthPanel from './Widths.vue'
+import LineColorPanel from './LineColors.vue'
+import FillColorPanel from './FillColors.vue'
+import LineWidthPanel from './LineWidths.vue'
+import CircleRadiusPanel from './CircleRadius.vue'
 import HTTPFileSystem from '@/js/HTTPFileSystem'
 
-@Component({ components: { AddDatasetsPanel, ColorPanel, FillPanel, WidthPanel }, props: {} })
+@Component({
+  components: {
+    AddDatasetsPanel,
+    CircleRadiusPanel,
+    ColorPanel,
+    FillColorPanel,
+    LineColorPanel,
+    LineWidthPanel,
+  },
+  props: {},
+})
 export default class VueComponent extends Vue {
-  @Prop({ required: true }) vizDetails!: any
+  @Prop({ required: true }) vizDetails: any
   @Prop({ required: true }) datasets: any
   @Prop({ required: true }) fileSystem!: HTTPFileSystem
   @Prop({ required: true }) subfolder!: string
@@ -74,8 +83,9 @@ export default class VueComponent extends Vue {
   private getSections() {
     if (this.sections) {
       return this.sections.map(section => {
-        const componentName = section.slice(0, 1).toUpperCase() + section.slice(1) + 'Panel'
-        return { component: componentName, name: section }
+        const caps = startCase(section.replaceAll('-', ' ')).replaceAll(' ', '') + 'Panel'
+        const componentName = caps
+        return { component: componentName, name: section.replaceAll('-', ' ') }
       })
     } else {
       return [
@@ -85,18 +95,6 @@ export default class VueComponent extends Vue {
       ]
     }
   }
-
-  // @Watch('vizDetails') modelChanged() {
-  //   // console.log('NEW VIZMODEL', this.vizDetails)
-  // }
-
-  // @Watch('datasets') datasetsChanged() {
-  //   // console.log('NEW DATASETS', this.datasets)
-  // }
-
-  // private mounted() {
-  //   this.buildConfiguration()
-  // }
 
   private get vizConfiguration() {
     return { datasets: this.vizDetails.datasets, display: this.vizDetails.display }
@@ -143,11 +141,11 @@ export default class VueComponent extends Vue {
       columns: {},
     },
     display: {
+      lineColor: {},
       color: {},
-      width: {},
-      circle: {},
+      lineWidth: {},
+      radius: {},
       fill: {},
-      // outline: {},
       label: {},
     },
   }
@@ -176,6 +174,10 @@ export default class VueComponent extends Vue {
       suggestedFilename = this.yamlConfig
     }
 
+    if (configFile.endsWith('shp')) {
+      suggestedFilename = `viz-map-${configFile}.yaml`
+    }
+
     const filename = prompt('Export filename:', suggestedFilename)
     if (!filename) return
 
@@ -184,14 +186,22 @@ export default class VueComponent extends Vue {
     const config = {
       title: this.vizDetails.title,
       description: this.vizDetails.description,
+      zoom: Math.round(10 * this.$store.state.viewState.zoom) / 10,
+      center: [
+        Math.round(100 * this.$store.state.viewState.center[0]) / 100,
+        Math.round(100 * this.$store.state.viewState.center[1]) / 100,
+      ],
       network: this.vizDetails.network || this.vizDetails.geojsonFile,
       projection: this.vizDetails.projection,
       showDifferences: this.vizDetails.showDifferences,
       sampleRate: this.vizDetails.sampleRate,
-      shapes: this.vizDetails.shapes,
+      shapes: this.vizDetails.shapes?.file || this.vizDetails.shapes,
       datasets: { ...this.vizDetails.datasets },
       display: { ...this.vizDetails.display },
     } as any
+
+    // remove shapefile itself from list of datasets
+    if (config.datasets[config.shapes]) delete config.datasets[config.shapes]
 
     // remove blank and false values
     for (const prop of Object.keys(config)) if (!config[prop]) delete config[prop]
@@ -200,8 +210,29 @@ export default class VueComponent extends Vue {
       delete config.display.color?.generatedColors
     }
     if (config.display.fill) {
-      delete config.display.fill?.colorRamp?.style
-      delete config.display.fill?.generatedColors
+      if (config.display.fill.colorRamp) {
+        delete config.display.fill.colorRamp?.style
+        delete config.display.fill.generatedColors
+        if (!config.display.fill.colorRamp.reverse) {
+          delete config.display.fill.colorRamp.reverse
+        }
+      } else {
+        delete config.display.fill.filters
+        delete config.display.fill.dataset
+        delete config.display.fill.columnName
+      }
+    }
+    if (config.display.lineColor) {
+      if (config.display.lineColor.colorRamp) {
+        delete config.display.lineColor.colorRamp?.style
+        delete config.display.lineColor.generatedColors
+        if (!config.display.lineColor.colorRamp.reverse) {
+          delete config.display.lineColor.colorRamp.reverse
+        }
+      } else {
+        delete config.display.lineColor.dataset
+        delete config.display.lineColor.columnName
+      }
     }
 
     // clean up datasets filenames
@@ -222,8 +253,6 @@ export default class VueComponent extends Vue {
     const text = YAML.stringify(config, {
       indent: 4,
       simpleKeys: true,
-      // schema: 'yaml-1.1',
-      // version: '1.2',
     })
 
     var element = document.createElement('a')
