@@ -20,10 +20,10 @@ const initialViewState = () => ({
   initial: true,
   pitch: 0,
   bearing: 0,
-  longitude: -122.4,
-  latitude: 37.78,
-  zoom: 9,
   maxZoom: 24,
+  longitude: 0,
+  latitude: 0, // 37.77,
+  zoom: 8,
 })
 
 export default new Vuex.Store({

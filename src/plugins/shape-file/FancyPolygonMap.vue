@@ -6,7 +6,7 @@
      h3 {{ vizDetails.title }}
      p {{ vizDetails.description }}
 
-  .status-bar(v-if="statusText") {{ statusText }}
+  .status-bar(v-show="statusText") {{ statusText }}
 
   //- polygon-and-circle-map.choro-map(v-if="!thumbnail"
   //-   :props="mapProps"
@@ -233,6 +233,7 @@ export default class VueComponent extends Vue {
       lineWidth: {} as any,
       radius: {} as any,
     },
+    tooltip: [] as string[],
   }
 
   private datasets: { [id: string]: DataTable } = {}
@@ -420,16 +421,28 @@ export default class VueComponent extends Vue {
   private async loadYamlConfig() {
     if (!this.fileApi) return {}
 
-    try {
-      const filename =
-        this.yamlConfig.indexOf('/') > -1 ? this.yamlConfig : this.subfolder + '/' + this.yamlConfig
+    const filename =
+      this.yamlConfig.indexOf('/') > -1 ? this.yamlConfig : this.subfolder + '/' + this.yamlConfig
 
+    // 1. First try loading the file directly
+    try {
       const text = await this.fileApi.getFileText(filename)
       return YAML.parse(text)
     } catch (err) {
-      console.error('failed')
-      const e = err as any
+      console.log(`${filename} not found, trying config folders`)
     }
+
+    // 2. Try loading from a config folder instead
+    const { vizes } = await this.fileApi.findAllYamlConfigs(this.subfolder)
+    if (vizes[this.yamlConfig]) {
+      try {
+        const text = await this.fileApi.getFileText(vizes[this.yamlConfig])
+        return YAML.parse(text)
+      } catch (err) {
+        console.error(`Also failed to load ${vizes[this.yamlConfig]}`)
+      }
+    }
+    this.$store.commit('error', 'Could not load YAML: ' + filename)
   }
 
   /**
@@ -445,8 +458,8 @@ export default class VueComponent extends Vue {
     lineWidth?: LineWidthDefinition
     radius?: CircleRadiusDefinition
   }) {
-    this.statusText = 'Updating...'
-    console.log({ props })
+    this.statusText = 'Updating symbology...'
+    console.log('props', props)
 
     if (props['fill']) {
       this.vizDetails.display.fill = props.fill
@@ -516,6 +529,12 @@ export default class VueComponent extends Vue {
     dataJoinColumn: string,
     featureJoinColumn: string
   ) {
+    // make sure columns exist!
+    if (!this.boundaryDataTable[featureJoinColumn])
+      throw Error(`Geodata does not have property ${featureJoinColumn}`)
+    if (!dataTable[dataJoinColumn])
+      throw Error(`Dataset ${datasetId} does not have column ${dataJoinColumn}`)
+
     // create lookup column and write lookup offsets
     const lookupColumn: DataTableColumn = { type: DataType.LOOKUP, values: [], name: '@' }
 
@@ -523,11 +542,25 @@ export default class VueComponent extends Vue {
     const boundaryOffsets = this.getBoundaryOffsetLookup(featureJoinColumn)
 
     console.log('retrieving lookup values:', featureJoinColumn, dataJoinColumn)
+
+    // if user wants specific tooltips based on this dataset, save the values
+    const tips = this.vizDetails.tooltip || []
+    const relevantTips = tips
+      .filter(tip => tip.substring(0, tip.indexOf(':')).startsWith(datasetId))
+      .map(tip => {
+        return [tip, tip.substring(1 + tip.indexOf(':'))]
+      })
+    console.log({ relevantTips })
+
     for (let i = 0; i < dataValues.length; i++) {
       const featureOffset = boundaryOffsets[dataValues[i]]
       lookupColumn.values[i] = featureOffset
+      for (const tip of relevantTips) {
+        this.boundaries[featureOffset].properties[tip[0]] = dataTable[tip[1]].values[i]
+      }
     }
 
+    console.log({ boundaries: this.boundaries })
     // add this dataset to the datamanager
     dataTable['@'] = lookupColumn
     this.myDataManager.setPreloadedDataset({
@@ -546,6 +579,8 @@ export default class VueComponent extends Vue {
           : `${featureJoinColumn}:${dataJoinColumn}`,
     } as any
 
+    console.log('triggering updates')
+
     this.vizDetails = Object.assign({}, this.vizDetails)
 
     this.datasets[datasetId] = dataTable
@@ -559,6 +594,7 @@ export default class VueComponent extends Vue {
     if (this.boundaryJoinLookups[joinColumn]) return this.boundaryJoinLookups[joinColumn]
 
     // build it
+    this.statusText = 'Joining datasets...'
     console.log('building lookup for', joinColumn)
 
     this.boundaryJoinLookups[joinColumn] = {}
@@ -611,6 +647,7 @@ export default class VueComponent extends Vue {
         const dataColumn = selectedDataset[columnName]
         const lookupColumn = selectedDataset['@']
         // Calculate colors for each feature
+        console.log('Updating fills...')
         const calculatedColors = ColorWidthSymbologizer.getColorsForDataColumn(
           this.boundaries.length,
           dataColumn,
@@ -633,10 +670,11 @@ export default class VueComponent extends Vue {
       if (columnName) {
         const datasetKey = color.dataset || ''
         const selectedDataset = this.datasets[datasetKey]
-        const lookupColumn = selectedDataset['@']
         if (selectedDataset) {
+          const lookupColumn = selectedDataset['@']
           const dataColumn = selectedDataset[columnName]
           // Calculate colors for each feature
+          console.log('update lines...')
           const calculatedColors = ColorWidthSymbologizer.getColorsForDataColumn(
             this.boundaries.length,
             dataColumn,
@@ -664,6 +702,7 @@ export default class VueComponent extends Vue {
         const dataColumn = selectedDataset[columnName]
         const lookupColumn = selectedDataset['@']
         // Calculate widths for each feature
+        console.log('update line widths...')
         const calculatedWidths = ColorWidthSymbologizer.getWidthsForDataColumn(
           this.boundaries.length,
           dataColumn,
@@ -674,9 +713,8 @@ export default class VueComponent extends Vue {
       }
     } else {
       // simple width
-      this.dataLineWidths = 2
+      this.dataLineWidths = 1
     }
-
     // this.filterListener()
   }
 
@@ -725,7 +763,7 @@ export default class VueComponent extends Vue {
       let { filteredRows } = await this.myDataManager.getFilteredDataset({
         dataset: this.datasetFilename,
       })
-      console.log(12, filteredRows)
+      // console.log(12, filteredRows)
 
       let groupLookup: any // this will be the map of boundary IDs to rows
       let groupIndex: any = 1 // unfiltered values will always be element 1 of [key, values[]]
@@ -790,7 +828,7 @@ export default class VueComponent extends Vue {
     let featureProperties = [] as any[]
 
     try {
-      this.statusText = 'Loading shapes...'
+      this.statusText = 'Loading features...'
 
       if (filename.startsWith('http')) {
         // geojson from url!
@@ -842,7 +880,8 @@ export default class VueComponent extends Vue {
       // generate centroids if we have polygons
       if (!hasNoPolygons) this.generateCentroidsAndMapCenter()
     } catch (e) {
-      console.warn(e)
+      console.error(e)
+      this.$store.commit('error', '' + e)
       throw Error(`Could not load "${filename}"`)
     }
 
@@ -854,7 +893,7 @@ export default class VueComponent extends Vue {
     const datasetId = filename.substring(filename.lastIndexOf('/'))
     this.datasetFilename = datasetId
 
-    this.myDataManager.addFilterListener({ dataset: this.datasetFilename }, this.filterListener)
+    // this.myDataManager.addFilterListener({ dataset: this.datasetFilename }, this.filterListener)
 
     this.vizDetails.datasets[datasetId] = {
       file: this.datasetFilename,
@@ -916,7 +955,7 @@ export default class VueComponent extends Vue {
         center: [centerLong, centerLat],
         bearing: 0,
         pitch: 0,
-        zoom: 10,
+        zoom: 9,
         initial: true,
       })
       this.needsInitialMapExtent = false
@@ -990,7 +1029,7 @@ export default class VueComponent extends Vue {
         latitude,
         bearing: 0,
         pitch: 0,
-        zoom: 10,
+        zoom: 9,
         center: [longitude, latitude],
         jump: true,
       })
@@ -1020,6 +1059,7 @@ export default class VueComponent extends Vue {
           : this.config.datasets[datasetId].file
 
       this.statusText = `Loading dataset ${this.datasetFilename} ...`
+      await this.$nextTick()
 
       const dataset = await this.myDataManager.getDataset({ dataset: this.datasetFilename })
 
@@ -1035,6 +1075,9 @@ export default class VueComponent extends Vue {
       this.datasets[datasetId] = dataset.allRows
 
       // link the joins if we have a join
+      this.statusText = `Joining datasets...`
+      await this.$nextTick()
+
       if (joinColumns[0]) {
         this.setupJoin(this.datasets[datasetId], datasetId, joinColumns[1], joinColumns[0])
       }
@@ -1043,7 +1086,9 @@ export default class VueComponent extends Vue {
 
       this.figureOutRemainingFilteringOptions()
     } catch (e) {
-      console.error('' + e)
+      const msg = '' + e
+      console.error(msg)
+      this.$store.commit('error', msg)
     }
     return []
   }

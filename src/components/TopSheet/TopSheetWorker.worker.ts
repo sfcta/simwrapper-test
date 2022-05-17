@@ -222,7 +222,7 @@ function doAllCalculations() {
       expr = '' + _yaml.calculations[calc]
 
       // look up any file-based variables
-      expr = getFileVariableReplacements(expr)
+      expr = getFileVariableReplacements(calc, expr)
 
       // replace variables with known quantities
       for (const [k, v] of Object.entries(calculations)) {
@@ -276,7 +276,6 @@ function getFilterReplacements(calc: string): any[] {
 
   const [left, value] = innerPattern.split(whichFilter).map((a: string) => a.trim())
   const [file, column] = left.split('.').map((a: string) => a.trim())
-  console.log(file, column, value)
 
   // ok now do the filtering
   const table = _fileData[file] as any[]
@@ -289,20 +288,56 @@ function getFilterReplacements(calc: string): any[] {
   return filtered
 }
 
-function getFileVariableReplacements(expr: string) {
+function getFileVariableReplacements(calc: string, expr: string) {
+  const validFunctions = ['first', 'last', 'sum', 'mean', 'min', 'max', 'count']
+
   // this regex matches {variables}
-  // OOPS! SAFARI FUCKALL DOESN'T SUPPORT REGEX WITH LOOKBEHIND
   // broken: const re = /(?<={).*?(?=})/g
   // const patterns = expr.match(re)
-
   // non-regex version because SAFARI IS THE WORST :-O
   let offset = 0
   const patterns: string[] = []
+  let allFilters: any[] = []
 
   while (expr.indexOf('{', offset) > -1) {
     offset = 1 + expr.indexOf('{', offset)
     const element = expr.substring(offset, expr.indexOf('}', offset))
     patterns.push(element)
+    allFilters.push([])
+  }
+
+  const filterTypes = ['<=', '>=', '==', '!=', '<', '>']
+
+  for (let i = 0; i < patterns.length; i++) {
+    let patternElement = patterns[i]
+    if (patternElement.includes(',')) {
+      const filterList = patternElement.split(',')
+      for (const currentFilter of filterList) {
+        for (const comparison of filterTypes) {
+          const offset = currentFilter.indexOf(comparison)
+          if (offset > -1) {
+            const left = currentFilter.substring(0, offset)
+            const right = currentFilter.substring(offset + comparison.length)
+            const comp = currentFilter.substring(offset, offset + comparison.length)
+
+            allFilters[i].push({
+              key: left.trim(),
+              value: right.replaceAll(')', '').trim(),
+              mode: filterTypes.indexOf(comparison),
+              file: left.split('.')[0].trim(),
+              element: left.split('.')[1].trim(),
+              exp: (left + comp + right).replaceAll(')', ''),
+            })
+            break
+          }
+        }
+      }
+      if (patternElement[0] == '@') {
+        patterns[i] = patternElement.split(',')[0] + ')'
+      } else {
+        patterns[i] = patternElement.split(',')[0].replaceAll('(', '')
+      }
+    }
   }
 
   // no vars? just return the string
@@ -311,145 +346,134 @@ function getFileVariableReplacements(expr: string) {
   // for each {variable}, do a lookup and replace
   for (let p of patterns) {
     // e.g. sum, count
+    const pIndex = patterns.indexOf(p)
     let calculationType = ''
+    let calculationPrefix = ''
 
     // special functions start with '@': @sum, @count, @etc
     if (p[0] == '@') {
       const pSplitted = p.split(/[()@]+/)
       p = pSplitted[2]
       calculationType = pSplitted[1]
+      calculationPrefix = '@'
+    }
+
+    if (validFunctions.indexOf(calculationType) == -1) {
+      postMessage({
+        response: 'error',
+        message: `${calc}: no such function @${calculationType}`,
+      })
+      return '???'
     }
 
     const pattern = p.split('.') // ${file.variable} --> ['file','variable']
-    const element = _fileData[pattern[0]]
+    let element = _fileData[pattern[0]] as any[]
 
     let lookup
+    let filterString = ''
+    let filteredRows
+
+    if (!Array.isArray(element)) {
+      element = [element]
+    }
 
     switch (calculationType) {
       case 'min':
-        // Calculate the min
-        if (Array.isArray(element)) {
-          for (const row of element) {
-            if (lookup > row[pattern[1]] || lookup == undefined) {
-              lookup = row[pattern[1]]
-            }
+        for (const row of element.filter(f => filterElements(f, allFilters[pIndex]))) {
+          if (lookup > row[pattern[1]] || lookup == undefined) {
+            lookup = row[pattern[1]]
           }
-        } else {
-          lookup = element[pattern[1]]
         }
-        // @min(drtVehicles.t_1) -> drtVehicles.t_1
-        expr = expr.replaceAll(
-          '@min(' + pattern[0] + '.' + pattern[1] + ')',
-          '' + pattern[0] + '.' + pattern[1]
-        )
         break
       case 'max':
-        // Calculate the max
-        if (Array.isArray(element)) {
-          for (const row of element) {
-            if (lookup < row[pattern[1]] || lookup == undefined) {
-              lookup = row[pattern[1]]
-            }
+        for (const row of element.filter(f => filterElements(f, allFilters[pIndex]))) {
+          if (lookup < row[pattern[1]] || lookup == undefined) {
+            lookup = row[pattern[1]]
           }
-        } else {
-          lookup = element[pattern[1]]
         }
-        // @max(drtVehicles.t_1) -> drtVehicles.t_1
-        expr = expr.replaceAll(
-          '@max(' + pattern[0] + '.' + pattern[1] + ')',
-          '' + pattern[0] + '.' + pattern[1]
-        )
         break
       case 'mean':
-        // Calculate the mean
-        if (Array.isArray(element)) {
-          lookup = 0
-          let count = 0
-          for (const row of element) {
-            count++
-            lookup = lookup + row[pattern[1]]
-          }
-          lookup = lookup / count
-        } else {
-          lookup = element[pattern[1]]
+        lookup = 0
+        let count = 0
+        for (const row of element.filter(f => filterElements(f, allFilters[pIndex]))) {
+          count++
+          lookup = lookup + row[pattern[1]]
         }
-        // @mean(drtVehicles.t_1) -> drtVehicles.t_1
-        expr = expr.replaceAll(
-          '@mean(' + pattern[0] + '.' + pattern[1] + ')',
-          '' + pattern[0] + '.' + pattern[1]
-        )
+        if (count != 0) {
+          lookup = lookup / count
+        }
         break
       case 'first':
-        // Calculate the first element
-        if (Array.isArray(element)) {
-          lookup = element[0][pattern[1]]
-        } else {
-          lookup = element[pattern[1]]
-        }
-        // @first(drtVehicles.t_1) -> drtVehicles.t_1
-        expr = expr.replaceAll(
-          '@first(' + pattern[0] + '.' + pattern[1] + ')',
-          '' + pattern[0] + '.' + pattern[1]
-        )
+        filteredRows = element.filter(f => filterElements(f, allFilters[pIndex]))
+        if (filteredRows.length) lookup = filteredRows[0][pattern[1]]
         break
       case 'last':
-        // Calculate the last element
-        if (Array.isArray(element)) {
-          lookup = element[element.length-1][pattern[1]]
-        } else {
-          lookup = element[pattern[1]]
-        }
-        // @last(drtVehicles.t_1) -> drtVehicles.t_1
-        expr = expr.replaceAll(
-          '@last(' + pattern[0] + '.' + pattern[1] + ')',
-          '' + pattern[0] + '.' + pattern[1]
-        )
+        filteredRows = element.filter(f => filterElements(f, allFilters[pIndex]))
+        if (filteredRows.length) lookup = filteredRows[filteredRows.length - 1][pattern[1]]
         break
       case 'sum':
-        // Calculate the sum
         lookup = 0
-        if (Array.isArray(element)) {
-          for (const row of element) {
-            lookup = lookup + row[pattern[1]]
-          }
-        } else {
-          lookup = element[pattern[1]]
+        for (const row of element.filter(f => filterElements(f, allFilters[pIndex]))) {
+          lookup = lookup + row[pattern[1]]
         }
-        // @sum(drtVehicles.t_1) -> drtVehicles.t_1
-        expr = expr.replaceAll(
-          '@sum(' + pattern[0] + '.' + pattern[1] + ')',
-          '' + pattern[0] + '.' + pattern[1]
-        )
         break
       case 'count':
-        lookup = 0
-        // Count all elements
-        if (Array.isArray(element)) {
-          lookup = element.length
-        } else {
-          lookup = 1
-        }
-        // @count(drtVehicles.t_1) -> drtVehicles.t_1
-        expr = expr.replaceAll(
-          '@count(' + pattern[0] + '.' + pattern[1] + ')',
-          '' + pattern[0] + '.' + pattern[1]
-        )
+        lookup = element.filter(f => filterElements(f, allFilters[pIndex])).length
         break
       default:
         lookup = 0
-        // if this represents a scalar, use it; otherwise it is an array, and do a summation
-        if (Array.isArray(element)) {
-          for (const row of element) {
-            lookup = lookup + row[pattern[1]]
-          }
-        } else {
-          lookup = element[pattern[1]]
+        for (const row of element.filter(f => filterElements(f, allFilters[pIndex]))) {
+          lookup = lookup + row[pattern[1]]
         }
         break
     }
-    expr = expr.replaceAll('{' + pattern[0] + '.' + pattern[1] + '}', '' + lookup)
+
+    for (let filter of allFilters[pIndex]) {
+      filterString = `${filterString},${filter.exp}`
+    }
+
+    // (drtVehicles.t_1) -> drtVehicles.t_1
+    expr = expr.replaceAll(
+      `${calculationType}(${pattern[0]}.${pattern[1]}${filterString})`,
+      `${pattern[0]}.${pattern[1]}`
+    )
+
+    expr = expr.replaceAll(`{${calculationPrefix}${pattern[0]}.${pattern[1]}}`, `${lookup}`)
   }
   return expr
+}
+
+function filterElements(row: any, filterElements: any[]) {
+  let allResults = []
+  for (let i = 0; i < filterElements.length; i++) {
+    switch (filterElements[i].mode) {
+      case -1:
+        allResults.push(true)
+        break
+      case 0:
+        allResults.push(nerdamer(row[filterElements[i].element]).lte(filterElements[i].value))
+        break
+      case 1:
+        allResults.push(nerdamer(row[filterElements[i].element]).gte(filterElements[i].value))
+        break
+      case 2:
+        allResults.push(nerdamer(row[filterElements[i].element]).eq(filterElements[i].value))
+        break
+      case 3:
+        allResults.push(!nerdamer(row[filterElements[i].element]).eq(filterElements[i].value))
+        break
+      case 4:
+        allResults.push(nerdamer(row[filterElements[i].element]).lt(filterElements[i].value))
+        break
+      case 5:
+        allResults.push(nerdamer(row[filterElements[i].element]).gt(filterElements[i].value))
+        break
+      default:
+        allResults.push(false)
+        break
+    }
+  }
+  return !allResults.includes(false)
 }
 
 async function getYaml() {
@@ -464,6 +488,7 @@ async function getYaml() {
 }
 
 async function loadFiles() {
+  let filename = ''
   for (const inputFile of Object.keys(_yaml.files)) {
     try {
       // figure out which file to load
@@ -478,7 +503,7 @@ async function loadFiles() {
         throw Error(`More than one file matched pattern ${pattern}: ${matchingFiles}`)
       }
 
-      const filename = matchingFiles[0]
+      filename = matchingFiles[0]
 
       // load the file
       const text = await loadFileOrGzipFile(filename)
@@ -487,7 +512,7 @@ async function loadFiles() {
       await parseVariousFileTypes(inputFile, filename, text)
     } catch (e) {
       console.error(e)
-      // throw e
+      postMessage({ response: 'error', message: `${inputFile}: Error loading "${filename}"` })
     }
   }
 }

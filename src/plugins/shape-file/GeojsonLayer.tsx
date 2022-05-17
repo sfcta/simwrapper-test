@@ -9,6 +9,7 @@ import { DataTable, MAPBOX_TOKEN, REACT_VIEW_HANDLES } from '@/Globals'
 
 import globalStore from '@/store'
 import { LineOffsetLayer, OFFSET_DIRECTION } from '@/layers/LineOffsetLayer'
+import { GeoJsonLayer } from '@deck.gl/layers'
 import GeojsonOffsetLayer from '@/layers/GeojsonOffsetLayer'
 import screenshots from '@/js/screenshots'
 
@@ -28,7 +29,7 @@ export default function Component({
   features = [] as any[],
   fillColors = '#59a14f' as string | Uint8Array,
   lineColors = '#4e79a7' as string | Uint8Array,
-  lineWidths = 2 as number | Float32Array,
+  lineWidths = 1 as number | Float32Array,
   opacity = 1,
   pointRadii = 5 as number | Float32Array,
   screenshot = 0,
@@ -71,7 +72,7 @@ export default function Component({
     if (!isStroked) cbLineColor.push(0) // totally transparent
   } else {
     // array of colors
-    cbLineColor = (feature: any, o: DeckObject) => {
+    cbLineColor = (_: any, o: DeckObject) => {
       return [
         lineColors[o.index * 3 + 0], // r
         lineColors[o.index * 3 + 1], // g
@@ -88,7 +89,7 @@ export default function Component({
     cbLineWidth = lineWidths
   } else {
     // array of widths
-    cbLineWidth = (feature: any, o: DeckObject) => {
+    cbLineWidth = (_: any, o: DeckObject) => {
       return lineWidths[o.index]
     }
   }
@@ -99,7 +100,7 @@ export default function Component({
     // simple radius mode
     cbPointRadius = pointRadii
   } else {
-    cbPointRadius = (feature: any, o: DeckObject) => {
+    cbPointRadius = (_: any, o: DeckObject) => {
       return pointRadii[o.index]
     }
   }
@@ -132,6 +133,17 @@ export default function Component({
     if (object == null) return null
     let propList = ''
 
+    // dataset elements
+    const featureTips = Object.entries(features[index].properties)
+    for (const tip of featureTips) {
+      let value = tip[1]
+      if (value == null) return
+      if (typeof value == 'number') value = precise(value)
+      propList += `<tr><td style="text-align: right; padding-right: 0.5rem;">${tip[0]}</td><td><b>${value}</b></td></tr>`
+    }
+    if (propList) propList += `<tr><td>&nbsp;</td></tr>`
+
+    // feature elements
     let columns = Object.keys(featureDataTable)
     if (tooltip && tooltip.length) {
       columns = tooltip.map(tip => {
@@ -168,20 +180,20 @@ export default function Component({
   const layer = new GeojsonOffsetLayer({
     id: 'geoJsonOffsetLayer',
     data: features,
-    // function callbacks:
+    // function callbacks: --------------
     getLineWidth: cbLineWidth,
     getLineColor: cbLineColor,
     getFillColor: cbFillColor,
     getPointRadius: cbPointRadius,
-    // settings:
+    // settings: ------------------------
     autoHighlight: true,
     highlightColor: [255, 0, 224],
-    lineJointRounded: true,
+    // lineJointRounded: true,
     lineWidthUnits: 'pixels',
     lineWidthScale: 1,
-    lineWidthMinPixels: 0.5,
+    lineWidthMinPixels: 1,
     lineWidthMaxPixels: 50,
-    offsetDirection: OFFSET_DIRECTION.RIGHT,
+    // getOffset: OFFSET_DIRECTION.RIGHT,
     opacity: opacity / 100,
     pickable: true,
     pointRadiusUnits: 'pixels',

@@ -14,7 +14,7 @@
     "deploy-asim": "bash scripts/deploy-ghpages.sh ActivitySim/dashboard dashboard",
     "deploy-sfcta": "bash scripts/deploy-ghpages.sh sfcta/simwrapper simwrapper",
     "serve": "vite",
-    "build": "vite build",
+    "build": "node --max_old_space_size=8192 ./node_modules/vite/bin/vite.js build",
     "release": "standard-version",
     "test": "jest",
     "lint": "broken//vue-cli-service lint",

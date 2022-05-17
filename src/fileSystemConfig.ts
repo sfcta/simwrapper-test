@@ -57,6 +57,13 @@ const fileSystems: FileSystemConfig[] = [
     baseURL: 'https://svn.vsp.tu-berlin.de/repos/public-svn/shared/billy/simwrapper/sample-data',
     thumbnail: '/simwrapper/images/thumb-localfiles.jpg',
   },
+  {
+    name: 'SFCTA Prospector',
+    slug: 'prospector',
+    description: 'Shared CHAMP model runs',
+    baseURL: 'http://prospector/champ_runs',
+    hidden: true,
+  },
 ]
 
 for (let port = 8000; port < 8500; port++) {

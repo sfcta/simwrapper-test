@@ -3,7 +3,7 @@
   .widgets
     .widget
         b-select.selector(expanded v-model="dataColumn")
-          option(label="No lines" value="")
+          option(label="No lines" value="^")
           option(label="Single color" value="@")
           optgroup(v-for="dataset in datasetChoices()"
                   :key="dataset" :label="dataset")
@@ -16,7 +16,7 @@
       :class="{active: selectedSingleColor == swatch }"
       @click="clickedSingleColor(swatch)")
 
-  .more(v-show="dataColumn.length > 1")
+  .more(v-show="dataColumn && dataColumn.length >= 2")
     .widgets
       .widget
         p Steps
@@ -143,8 +143,11 @@ export default class VueComponent extends Vue {
   @Watch('selectedColor')
   @Watch('globalState.isDarkMode')
   private emitColorSpecification() {
+    // no answer
+    if (!this.dataColumn) return
+
     // no lines
-    if (!this.dataColumn) {
+    if (this.dataColumn == '^') {
       this.clickedSingleColor('')
       return
     }
@@ -193,7 +196,7 @@ export default class VueComponent extends Vue {
   }
 
   private datasetChoices(): string[] {
-    return this.datasetLabels.filter(label => label !== 'csvBase')
+    return this.datasetLabels.filter(label => label !== 'csvBase').reverse()
   }
 
   private columnsInDataset(datasetId: string): string[] {

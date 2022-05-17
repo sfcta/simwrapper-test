@@ -77,6 +77,8 @@ export default class VueComponent extends Vue {
   @Watch('scaleFactor')
   @Watch('dataColumn')
   private emitWidthSpecification() {
+    if (!this.dataColumn) return
+
     const slash = this.dataColumn.indexOf('/')
 
     const dataset = this.dataColumn.substring(0, slash)
@@ -92,7 +94,7 @@ export default class VueComponent extends Vue {
   }
 
   private get datasetChoices(): string[] {
-    return this.datasetLabels.filter(label => label !== 'csvBase')
+    return this.datasetLabels.filter(label => label !== 'csvBase').reverse()
   }
 
   private numericColumnsInDataset(datasetId: string): string[] {
