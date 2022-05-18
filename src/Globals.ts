@@ -1,4 +1,4 @@
-export const DEFAULT_PROJECTION = ''
+export const DEFAULT_PROJECTION = 'EPSG:2227'
 
 export const MAP_STYLES_ONLINE = {
   light: 'mapbox://styles/mapbox/light-v10',
