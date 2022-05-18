@@ -59,7 +59,7 @@ const fileSystems: FileSystemConfig[] = [
   },
   {
     name: 'SFCTA Prospector',
-    slug: 'prospector',
+    slug: 'champ',
     description: 'Shared CHAMP model runs',
     baseURL: 'http://prospector/champ_runs',
     hidden: true,
