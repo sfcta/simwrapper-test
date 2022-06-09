@@ -11,6 +11,7 @@
   "scripts": {
     "deploy-vsp": "bash scripts/deploy-ghpages.sh matsim-vsp/simwrapper simwrapper",
     "deploy-staging": "bash scripts/deploy-ghpages.sh simwrapper/staging staging",
+    "deploy-simwrapper": "bash scripts/deploy-ghpages.sh simwrapper/site site",
     "deploy-asim": "bash scripts/deploy-ghpages.sh ActivitySim/dashboard dashboard",
     "deploy-sfcta": "bash scripts/deploy-ghpages.sh sfcta/simwrapper simwrapper",
     "serve": "vite",
@@ -26,6 +27,7 @@
   },
   "dependencies": {
     "@aftersim/pako": "^1.0.11-3",
+    "@deck.gl/extensions": "^8.7.11",
     "@flowmap.gl/core": "^7.3.3",
     "@luma.gl/core": "^8.5.10",
     "@math.gl/polygon": "^3.5.6",

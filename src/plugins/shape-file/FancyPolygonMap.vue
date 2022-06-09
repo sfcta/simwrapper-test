@@ -11,6 +11,7 @@
   geojson-layer.choro-map(v-if="!thumbnail"
     :viewId="layerId"
     :features="useCircles ? centroids : boundaries"
+    :featureFilter="boundaryFilters"
     :lineColors="dataLineColors"
     :lineWidths="dataLineWidths"
     :fillColors="dataFillColors"
@@ -31,32 +32,33 @@
   )
 
   viz-configurator(v-if="isLoaded && !thumbnail"
-    :sections="['fill-color',  'fill-height', 'line-color','line-width', 'circle-radius']"
+    :sections="configuratorSections"
     :fileSystem="fileSystemConfig"
     :subfolder="subfolder"
     :yamlConfig="generatedExportFilename"
     :vizDetails="vizDetails"
     :datasets="datasets"
+    :legendStore="legendStore"
     @update="changeConfiguration"
     @screenshot="takeScreenshot")
 
   .config-bar(v-if="!thumbnail"
     :class="{'is-standalone': !configFromDashboard, 'is-disabled': !isLoaded}")
 
-    //- Column picker
-    .filter(:disabled="!datasetValuesColumnOptions.length")
-      p Display
-      b-dropdown(v-model="datasetValuesColumn"
-        aria-role="list" position="is-top-right" :mobile-modal="false" :close-on-click="true"
-        :scrollable="datasetValuesColumnOptions.length > 10"
-        max-height="250"
-        @change="handleUserSelectedNewMetric"
-      )
-        template(#trigger="{ active }")
-          b-button.is-warning(:label="datasetValuesColumn" :icon-right="active ? 'menu-up' : 'menu-down'")
+    //- //- Column picker
+    //- .filter(:disabled="!datasetValuesColumnOptions.length")
+    //-   p Display
+    //-   b-dropdown(v-model="datasetValuesColumn"
+    //-     aria-role="list" position="is-top-right" :mobile-modal="false" :close-on-click="true"
+    //-     :scrollable="datasetValuesColumnOptions.length > 10"
+    //-     max-height="250"
+    //-     @change="handleUserSelectedNewMetric"
+    //-   )
+    //-     template(#trigger="{ active }")
+    //-       b-button.is-warning(:label="datasetValuesColumn" :icon-right="active ? 'menu-up' : 'menu-down'")
 
-        b-dropdown-item(v-for="option in datasetValuesColumnOptions"
-          :key="option" :value="option" aria-role="listitem") {{ option }}
+    //-     b-dropdown-item(v-for="option in datasetValuesColumnOptions"
+    //-       :key="option" :value="option" aria-role="listitem") {{ option }}
 
     //- Filter pickers
     .filter(v-for="filter in Object.keys(filters)")
@@ -146,12 +148,20 @@ import { LineWidthDefinition } from '@/components/viz-configurator/LineWidths.vu
 import { FillHeightDefinition } from '@/components/viz-configurator/FillHeight.vue'
 import { DatasetDefinition } from '@/components/viz-configurator/AddDatasets.vue'
 import Coords from '@/js/Coords'
+import LegendStore from '@/js/LegendStore'
 
 interface FilterDetails {
   column: string
   label?: string
   options: any[]
   active: any[]
+}
+
+interface FilterDefinition {
+  dataset: string
+  column: string
+  invert: boolean
+  value: any
 }
 
 @Component({
@@ -173,8 +183,16 @@ export default class VueComponent extends Vue {
   private centroids: any[] = []
   private cbDatasetJoined: any
 
+  private legendStore = new LegendStore()
+
   private chosenNewFilterColumn = ''
   private availableFilterColumns: string[] = []
+
+  private get configuratorSections() {
+    if (this.isAreaMode)
+      return ['fill-color', 'fill-height', 'line-color', 'line-width', 'circle-radius']
+    else return ['line-color', 'line-width']
+  }
 
   private boundaryDataTable: DataTable = {}
 
@@ -219,6 +237,7 @@ export default class VueComponent extends Vue {
     widthFactor: null as any,
     thumbnail: '',
     sum: false,
+    filters: [] as { [filterId: string]: any }[],
     shapes: '' as string | { file: string; join: string },
     zoom: null as number | null,
     center: null as any[] | null,
@@ -253,6 +272,8 @@ export default class VueComponent extends Vue {
 
   private config: any = {}
 
+  private filterDefinitions: FilterDefinition[] = []
+
   private async mounted() {
     try {
       this.buildFileApi()
@@ -262,6 +283,9 @@ export default class VueComponent extends Vue {
       this.myDataManager = this.datamanager || new DashboardDataManager(this.root, this.subfolder)
 
       await this.getVizDetails()
+
+      this.filterDefinitions = this.parseFilterDefinitions()
+
       this.buildThumbnail()
       if (this.thumbnail) return
 
@@ -291,18 +315,15 @@ export default class VueComponent extends Vue {
       // Need boundaries first so we can build the lookups.
       // await Promise.all([this.loadBoundaries(), this.loadDataset()])
       await this.loadBoundaries()
+      this.filterShapesNow()
 
       this.isLoaded = true
       this.$emit('isLoaded')
 
-      // this.datasets = Object.assign({}, this.datasets)
       await this.loadDataset()
 
       // Check URL query parameters
       this.honorQueryParameters()
-
-      // Finally, update the view
-      // this.updateChart()
 
       this.datasets = Object.assign({}, this.datasets)
       this.config.datasets = Object.assign({}, this.datasets)
@@ -315,12 +336,88 @@ export default class VueComponent extends Vue {
     }
   }
 
+  private boundaryFilters = new Float32Array(0)
+
   private beforeDestroy() {
+    this.legendStore.clear()
     this.myDataManager.removeFilterListener(this.config, this.filterListener)
 
     // MUST delete the React view handle to prevent gigantic memory leak!
     delete REACT_VIEW_HANDLES[this.layerId]
     this.$store.commit('setFullScreen', false)
+  }
+
+  private filterShapesNow() {
+    console.log(311)
+
+    // shape filters
+    const shapeFilters = this.filterDefinitions.filter(f => f.dataset === 'shapes')
+
+    if (!shapeFilters.length) return
+
+    console.log({ shapeFilters, length: this.boundaries.length })
+
+    // loop on all boundaries and centroids
+    this.boundaryFilters = new Float32Array(this.boundaries.length)
+
+    for (let i = 0; i < this.boundaries.length; i++) {
+      for (const filter of shapeFilters) {
+        const hideElement = !this.checkIsFiltered(i, filter)
+        if (hideElement) this.boundaryFilters[i] = -1
+      }
+    }
+  }
+
+  private checkIsFiltered(i: number, filter: FilterDefinition) {
+    const dataset =
+      filter.dataset == 'shapes' ? this.boundaryDataTable : this.datasets[filter.dataset]
+    const actualValue = dataset[filter.column].values[i]
+
+    let includeElement = false
+
+    if (Array.isArray(filter.value)) {
+      // 1. filter is an array of categories
+      includeElement = filter.value.indexOf(actualValue) > -1
+    } else {
+      // 2. filter is a string: exact value
+      includeElement = filter.value == actualValue
+    }
+
+    // Invert if inverted
+    if (filter.invert) includeElement = !includeElement
+
+    return includeElement
+  }
+
+  private parseFilterDefinitions() {
+    // no filters? go away
+    if (!Array.isArray(this.vizDetails.filters)) return []
+
+    // Filter the shapes themselves
+    const filters = [] as FilterDefinition[]
+
+    for (const filter of this.vizDetails.filters) {
+      const [id, value] = Object.entries(filter)[0] // there should only be one
+      const [dataset, column] = id.split('.')
+      if (column.endsWith('!')) {
+        filters.push({
+          dataset,
+          column: column.substring(0, column.length - 1),
+          invert: true,
+          value,
+        })
+      } else {
+        filters.push({
+          dataset,
+          column,
+          value,
+          invert: false,
+        })
+      }
+    }
+
+    console.log(77, filters)
+    return filters
   }
 
   @Watch('$store.state.viewState') viewMoved() {
@@ -565,10 +662,11 @@ export default class VueComponent extends Vue {
     // if user wants specific tooltips based on this dataset, save the values
     const tips = this.vizDetails.tooltip || []
     const relevantTips = tips
-      .filter(tip => tip.substring(0, tip.indexOf(':')).startsWith(datasetId))
+      .filter(tip => tip.substring(0, tip.indexOf('.')).startsWith(datasetId))
       .map(tip => {
-        return [tip, tip.substring(1 + tip.indexOf(':'))]
+        return [tip, tip.substring(1 + tip.indexOf('.'))]
       })
+
     console.log({ relevantTips })
 
     for (let i = 0; i < dataValues.length; i++) {
@@ -582,6 +680,7 @@ export default class VueComponent extends Vue {
     }
 
     console.log({ boundaries: this.boundaries })
+
     // add this dataset to the datamanager
     dataTable['@'] = lookupColumn
     this.myDataManager.setPreloadedDataset({
@@ -685,19 +784,27 @@ export default class VueComponent extends Vue {
 
         // Calculate colors for each feature
         console.log('Updating fills...')
-        const calculatedColors = ColorWidthSymbologizer.getColorsForDataColumn({
+        const { array, legend } = ColorWidthSymbologizer.getColorsForDataColumn({
           length: this.boundaries.length,
           data: dataColumn,
           normalize: normalColumn,
           lookup: lookupColumn,
           options: color,
         })
-        this.dataFillColors = calculatedColors
+
+        this.dataFillColors = array
+
+        this.legendStore.setLegendSection({
+          section: 'Color',
+          column: dataColumn.name,
+          values: legend,
+        })
       }
     } else {
       // simple color
-      console.log('WHHOPS')
+      console.log('simple')
       this.dataFillColors = color.generatedColors[0]
+      this.legendStore.clear('Color')
     }
   }
 
@@ -712,21 +819,29 @@ export default class VueComponent extends Vue {
         if (selectedDataset) {
           const lookupColumn = selectedDataset['@']
           const dataColumn = selectedDataset[columnName]
+
           if (!dataColumn)
             throw Error(`Dataset ${datasetKey} does not contain column "${columnName}"`)
+
           // Calculate colors for each feature
-          console.log('update lines...')
-          const calculatedColors = ColorWidthSymbologizer.getColorsForDataColumn({
+          const { array, legend } = ColorWidthSymbologizer.getColorsForDataColumn({
             length: this.boundaries.length,
             data: dataColumn,
             lookup: lookupColumn,
             options: color,
           })
-          this.dataLineColors = calculatedColors
+          this.dataLineColors = array
+
+          this.legendStore.setLegendSection({
+            section: 'Line Color',
+            column: dataColumn.name,
+            values: legend,
+          })
         }
       } else {
         // simple color
         this.dataLineColors = color.generatedColors[0]
+        this.legendStore.clear('Line Color')
       }
     } catch (e) {
       console.error('' + e)
@@ -735,6 +850,14 @@ export default class VueComponent extends Vue {
 
   private handleNewLineWidth(width: LineWidthDefinition) {
     const columnName = width.columnName
+
+    // No scale factor? go hoome
+    if (width.scaleFactor && isNaN(width.scaleFactor)) {
+      this.dataLineWidths = 1
+      this.legendStore.clear('Line Width')
+      return
+    }
+
     if (columnName) {
       // Get the data column
       const datasetKey = width.dataset || ''
@@ -744,19 +867,32 @@ export default class VueComponent extends Vue {
         if (!dataColumn)
           throw Error(`Dataset ${datasetKey} does not contain column "${columnName}"`)
         const lookupColumn = selectedDataset['@']
+
         // Calculate widths for each feature
-        console.log('update line widths...')
-        const calculatedWidths = ColorWidthSymbologizer.getWidthsForDataColumn({
+        const { array, legend } = ColorWidthSymbologizer.getWidthsForDataColumn({
           length: this.boundaries.length,
           data: dataColumn,
           lookup: lookupColumn,
           options: width,
         })
-        this.dataLineWidths = calculatedWidths
+
+        this.dataLineWidths = array || 0
+
+        if (legend.length) {
+          this.legendStore.setLegendSection({
+            section: 'Line Width',
+            column: dataColumn.name,
+            values: legend,
+          })
+        } else {
+          this.legendStore.clear('Line Width')
+        }
       }
     } else {
       // simple width
+
       this.dataLineWidths = 1
+      this.legendStore.clear('Line Width')
     }
     // this.filterListener()
   }
@@ -850,6 +986,8 @@ export default class VueComponent extends Vue {
   }
 
   private async filterListener() {
+    return
+
     try {
       console.log(11, this.datasetFilename)
       let { filteredRows } = await this.myDataManager.getFilteredDataset({
@@ -1155,11 +1293,11 @@ export default class VueComponent extends Vue {
           : this.config.datasets[datasetId].file
 
       this.statusText = `Loading dataset ${this.datasetFilename} ...`
+      console.log(11, 'loading ' + this.datasetFilename)
+
       await this.$nextTick()
 
-      console.log(11, 'loading ' + this.datasetFilename)
       const dataset = await this.myDataManager.getDataset({ dataset: this.datasetFilename })
-      console.log(12, 'got it', dataset)
 
       // figure out join - use ".join" or first column key
       const joiner =
