@@ -38,6 +38,14 @@ const fileSystems: FileSystemConfig[] = [
     hidden: true,
   },
   {
+    name: 'Public Data Folder',
+    slug: 'files',
+    description: 'Data from /public/data folder',
+    baseURL: loc.origin + '/' + 'data',
+    hidden: true,
+  },
+
+  {
     name: 'Browse data',
     slug: 'view',
     description: "View this site's datasets",

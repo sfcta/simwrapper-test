@@ -13,6 +13,12 @@ echo --- Set up Github Pages SPA links ---
 # $1 is github repo; $2 is base URL folder (without slashes)
 sed -I .bak "s#'/'#'/$2/'#"  vite.config.ts
 sed -I .bak "s#'/'#'/$2/'#"  public/404.html
+sed -I .bak "s#'/'#'/$2/'#"  src/fileSystemConfig.ts
+
+echo --- BUILDING INDEX.HTML FILES
+cd public/data
+node ../../scripts/build-index.js
+cd ../..
 
 echo --- BUILDING ---
 node --max_old_space_size=8192 ./node_modules/vite/bin/vite.js build
