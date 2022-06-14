@@ -1,0 +1,27 @@
+title: Transit Coverage
+zoom: 11.7
+center:
+    - -122.42
+    - 37.77
+shapes: sf_maz.geojson
+datasets:
+    coverage:
+        file: Coverage_2021.csv
+        join: MAZID
+display:
+    fill:
+        dataset: coverage
+        columnName: Coverage_AM
+        colorRamp:
+            ramp: Blues
+            steps: 3
+    lineColor:
+        generatedColors:
+            - ""
+filters:
+  - coverage.Code_AM!: 0
+tooltip:
+  - shapes.MAZID
+  - shapes.Nhood
+  - coverage.Coverage_AM
+  
