@@ -215,7 +215,7 @@ export default class VueComponent extends Vue {
   // Filters. Key is column id; value array is empty for "all" or a list of "or" values
   private filters: { [column: string]: FilterDetails } = {}
 
-  private generatedColors: string[] = ['#4e79a7']
+  private fixedColors: string[] = ['#4e79a7']
 
   private needsInitialMapExtent = true
   private datasetJoinColumn = ''
@@ -756,7 +756,7 @@ export default class VueComponent extends Vue {
   }
 
   // private handleNewFill(fill: FillDefinition) {
-  //   this.generatedColors = fill.generatedColors
+  //   this.fixedColors = fill.fixedColors
 
   //   const columnName = fill.columnName
 
@@ -774,7 +774,7 @@ export default class VueComponent extends Vue {
 
   private handleNewFillColor(fill: FillColorDefinition) {
     const color = fill
-    this.generatedColors = color.generatedColors
+    this.fixedColors = color.fixedColors
 
     const columnName = color.columnName
 
@@ -836,7 +836,7 @@ export default class VueComponent extends Vue {
 
         // Calculate colors for each feature
         // console.log('Updating fills...')
-        const { array, legend } = ColorWidthSymbologizer.getColorsForDataColumn({
+        const { array, legend, normalizedValues } = ColorWidthSymbologizer.getColorsForDataColumn({
           length: this.boundaries.length,
           data: dataColumn,
           normalize: normalColumn,
@@ -856,14 +856,14 @@ export default class VueComponent extends Vue {
     } else {
       // simple color
       // console.log('simple')
-      this.dataFillColors = color.generatedColors[0]
+      this.dataFillColors = color.fixedColors[0]
       this.legendStore.clear('Color')
     }
   }
 
   private handleNewLineColor(color: LineColorDefinition) {
     try {
-      this.generatedColors = color.generatedColors
+      this.fixedColors = color.fixedColors
 
       const columnName = color.columnName
 
@@ -929,7 +929,7 @@ export default class VueComponent extends Vue {
         }
       } else {
         // simple color
-        this.dataLineColors = color.generatedColors[0]
+        this.dataLineColors = color.fixedColors[0]
         this.legendStore.clear('Line Color')
       }
     } catch (e) {
