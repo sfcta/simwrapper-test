@@ -12,11 +12,12 @@ display:
     fill:
         dataset: coverage
         columnName: Coverage_AM
-        colorRamp:
-            ramp: Blues
-            steps: 3
+        fixedColors:
+            - '#8cb7c9'
+            - '#d1d3d4'
+            - '#297aa5'
     lineColor:
-        generatedColors:
+        fixedColors:
             - ""
 filters:
   - coverage.Code_AM!: 0
