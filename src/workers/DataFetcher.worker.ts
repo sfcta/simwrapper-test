@@ -54,20 +54,20 @@ async function fetchData(props: {
   _files = props.files
   _buffer = props.buffer
 
-  // if dataset has a path in it, we need to fetch the correct subfolder contents
-  const slash = _config.dataset.indexOf('/')
-  if (slash > -1) {
-    const mergedFolder = slash === 0 ? _config.dataset : `${_subfolder}/${_config.dataset}`
-    _dataset = mergedFolder.substring(1 + mergedFolder.lastIndexOf('/'))
-    _subfolder = mergedFolder.substring(0, mergedFolder.lastIndexOf('/'))
-
-    // need to fetch new list of files
-    const { files } = await _fileSystem.getDirectory(_subfolder)
-    _files = files
-  }
-
-  // load all files
   try {
+    // if dataset has a path in it, we need to fetch the correct subfolder contents
+    const slash = _config.dataset.indexOf('/')
+    if (slash > -1) {
+      const mergedFolder = slash === 0 ? _config.dataset : `${_subfolder}/${_config.dataset}`
+      _dataset = mergedFolder.substring(1 + mergedFolder.lastIndexOf('/'))
+      _subfolder = mergedFolder.substring(0, mergedFolder.lastIndexOf('/'))
+
+      // need to fetch new list of files
+      const { files } = await _fileSystem.getDirectory(_subfolder)
+      _files = files
+    }
+
+    // load all files
     await loadFile()
     postMessage(_fileData[_dataset])
   } catch (e) {
@@ -81,9 +81,23 @@ async function fetchData(props: {
 function convertFeaturePropertiesToDataTable(features: any[]) {
   const dataTable: DataTable = {}
 
-  // 1. set up one array for each column
+  // 1. set up one array for each (useful) column
   const firstRow = features[0]
-  const headers = Object.keys(firstRow).sort()
+  let headers = Object.keys(firstRow).sort()
+  if (_config.drop) {
+    let dropColumns: string[] = Array.isArray(_config.drop) ? _config.drop : _config.drop.split(',')
+    if (dropColumns.length) {
+      console.log('DROPPING', dropColumns)
+      headers = headers.filter(header => dropColumns.indexOf(header) == -1)
+    }
+  }
+  if (_config.keep) {
+    let keepColumns: string[] = Array.isArray(_config.keep) ? _config.keep : _config.keep.split(',')
+    if (keepColumns.length) {
+      console.log('KEEPING', keepColumns)
+      headers = headers.filter(header => keepColumns.indexOf(header) > -1)
+    }
+  }
 
   // 2. Determine column types based on first row (scary but necessary?)
   for (const columnId of headers) {
@@ -109,8 +123,8 @@ function convertFeaturePropertiesToDataTable(features: any[]) {
     }
   }
 
-  calculateMaxValues(_dataset, dataTable)
   _fileData[_dataset] = dataTable
+  calculateMaxValues(_dataset, dataTable)
 }
 
 async function loadFile() {
@@ -144,14 +158,31 @@ async function parseData(filename: string, buffer: Uint8Array) {
     // parse the text: we can handle CSV or XML
     await parseVariousFileTypes(_dataset, filename, text)
   }
+
+  cleanData()
 }
 
+// keep specified, or remove extra, columns.
 function cleanData() {
-  const dataset = _fileData[_dataset]
+  if (_config.drop) {
+    let dropColumns: string[] = Array.isArray(_config.drop) ? _config.drop : _config.drop.split(',')
+    if (dropColumns.length) {
+      console.log('DROPPING: ', dropColumns)
+      const dataset = _fileData[_dataset]
+      dropColumns.forEach(column => delete dataset[column.trim()])
+    }
+  }
+  if (_config.keep) {
+    let keepColumns: string[] = Array.isArray(_config.keep) ? _config.keep : _config.keep.split(',')
+    if (keepColumns.length) {
+      console.log('KEEPING ONLY: ', keepColumns)
 
-  // remove extra columns
-  if (_config.ignoreColumns) {
-    _config.ignoreColumns.forEach((column: string) => delete dataset[column])
+      const trimmedDataset: any = {}
+      keepColumns.forEach(
+        column => (trimmedDataset[column.trim()] = _fileData[_dataset][column.trim()])
+      )
+      _fileData[_dataset] = trimmedDataset
+    }
   }
 }
 

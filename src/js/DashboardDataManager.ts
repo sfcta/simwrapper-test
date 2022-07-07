@@ -141,8 +141,12 @@ export default class DashboardDataManager {
    * @param filename
    * @param featureProperties array of feature objects
    */
-  public setFeatureProperties(fullpath: string, featureProperties: any[]) {
+  public setFeatureProperties(fullpath: string, featureProperties: any[], config: any) {
     const key = fullpath.substring(fullpath.lastIndexOf('/') + 1)
+
+    // merge key with keep/drop params (etc)
+    let fullConfig = { dataset: key }
+    if ('string' !== typeof config) fullConfig = Object.assign(fullConfig, config)
 
     this.datasets[key] = {
       activeFilters: {},
@@ -152,7 +156,7 @@ export default class DashboardDataManager {
         const thread = new DataFetcherWorker()
         this.threads.push(thread)
         try {
-          thread.postMessage({ config: { dataset: key }, featureProperties })
+          thread.postMessage({ config: fullConfig, featureProperties })
 
           thread.onmessage = e => {
             thread.terminate()
@@ -450,8 +454,8 @@ export default class DashboardDataManager {
             //globalStore.commit('error', e.data.error)
             globalStore.commit('setStatus', {
               type: Status.ERROR,
-              msg: `File cannot be loaded...`,
-              desc: 'Check filename and path: ' + this.subfolder + '/' + config.dataset,
+              msg: `File not found: ${this.subfolder}/${config.dataset}`,
+              desc: 'Check filename and path.',
             })
             reject()
           }
