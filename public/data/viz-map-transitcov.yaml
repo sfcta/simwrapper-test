@@ -13,9 +13,9 @@ display:
         dataset: coverage
         columnName: Coverage_AM
         fixedColors:
-            - '#8cb7c9'
-            - '#d1d3d4'
-            - '#297aa5'
+            - '#649fb4'
+            - '#b1d0dc'
+            - '#1c4e84'
     lineColor:
         fixedColors:
             - ""
