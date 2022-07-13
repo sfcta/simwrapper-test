@@ -108,10 +108,14 @@ export default class VueComponent extends Vue {
   private datasetLabels: string[] = []
   private diffDatasets: string[] = []
   private diffRelative = false
+  private useHardCodedColors = false
 
   private mounted() {
     this.datasetLabels = Object.keys(this.vizConfiguration.datasets)
     this.datasetsAreLoaded()
+
+    if (this.vizConfiguration.display?.lineColor?.fixedColors) this.useHardCodedColors = true
+
     this.vizConfigChanged()
   }
 
@@ -189,9 +193,16 @@ export default class VueComponent extends Vue {
     // based on data
     const dataset = this.dataColumn.substring(0, slash)
     const columnName = this.dataColumn.substring(slash + 1)
-    const fixedColors = this.buildColors(this.selectedColor, parseInt(this.steps))
-
     const steps = parseInt(this.steps)
+
+    // Define the actual colors in the ramp.
+    // Use hard-coded colors if they are present (in fixedColors) -- first load only.
+    const fixedColors = this.useHardCodedColors
+      ? this.vizConfiguration.display?.lineColor?.fixedColors.slice()
+      : this.buildColors(this.selectedColor, steps)
+
+    // this.useHardCodedColors = false
+
     const lineColor = {
       dataset,
       columnName,
