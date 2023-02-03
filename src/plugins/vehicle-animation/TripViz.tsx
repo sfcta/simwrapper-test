@@ -6,9 +6,11 @@ import DeckGL from '@deck.gl/react'
 import DrtRequestLayer from './DrtRequestLayer'
 import MovingIconsLayer from '@/layers/moving-icons/moving-icons-layer'
 import PathTraceLayer from '@/layers/PathTraceLayer'
-import { MAPBOX_TOKEN } from '@/Globals'
+import { MAPBOX_TOKEN, REACT_VIEW_HANDLES } from '@/Globals'
 
 import globalStore from '@/store'
+
+const BASE_URL = import.meta.env.BASE_URL
 
 const ICON_MAPPING = {
   marker: { x: 0, y: 0, width: 128, height: 128, mask: true },
@@ -48,6 +50,7 @@ const DRT_REQUEST = {
 }
 
 export default function Component(props: {
+  viewId: number
   dark: boolean
   simulationTime: number
   paths: any[]
@@ -71,15 +74,29 @@ export default function Component(props: {
     vehicleLookup,
     searchEnabled,
     onClick,
+    viewId,
   } = props
 
   const theme = DEFAULT_THEME
 
-  const viewState = globalStore.state.viewState
+  // set initial view
+  const [viewState, setViewState] = useState(
+    center
+      ? ({
+          center: [16, 42],
+          longitude: center[0],
+          latitude: center[1],
+          pitch: 0,
+          bearing: 0,
+          zoom: 10,
+        } as any)
+      : Object.assign({}, globalStore.state.viewState)
+  )
 
-  // const initialView = Object.assign({}, INITIAL_VIEW_STATE)
-  // initialView.latitude = center[1]
-  // initialView.longitude = center[0]
+  // register setViewState in global view updater so we can respond to external map motion
+  REACT_VIEW_HANDLES[viewId] = () => {
+    setViewState(globalStore.state.viewState)
+  }
 
   const arcWidth = 1
   const [hoverInfo, setHoverInfo] = useState({} as any)
@@ -121,14 +138,14 @@ export default function Component(props: {
         }}
       >
         <big>
-          <b>Taxi: {vehicleId}</b>
+          <b>{vehicleId}</b>
         </big>
         <div>Passagiere: {object.occ} </div>
       </div>
     )
   }
 
-  if (settingsShowLayers['Routen'])
+  if (settingsShowLayers.routes)
     layers.push(
       //@ts-ignore:
       new PathTraceLayer({
@@ -140,9 +157,9 @@ export default function Component(props: {
         getTimeStart: (d: any) => d.t0,
         getTimeEnd: (d: any) => d.t1,
         getColor: (d: any) => props.colors[d.occ],
-        getWidth: (d: any) => 3.0 * (d.occ + 1) - 1,
-        opacity: 0.9,
-        widthMinPixels: 2,
+        getWidth: 1, // (d: any) => 3.0 * (d.occ + 1) - 1,
+        opacity: 0.8,
+        widthMinPixels: 1,
         rounded: false,
         shadowEnabled: false,
         searchFlag: searchEnabled ? 1.0 : 0.0,
@@ -153,7 +170,7 @@ export default function Component(props: {
       })
     )
 
-  if (settingsShowLayers['Fahrzeuge'])
+  if (settingsShowLayers.vehicles)
     layers.push(
       //@ts-ignore
       new MovingIconsLayer({
@@ -167,12 +184,12 @@ export default function Component(props: {
         getColor: (d: any) => props.colors[d.occ],
         iconMoving: 'vehicle',
         iconStill: 'diamond',
-        getSize: searchEnabled ? 56 : 44,
+        getSize: searchEnabled ? 72 : 64,
         opacity: 1.0,
         currentTime: simulationTime,
         shadowEnabled: false,
         noAlloc: true,
-        iconAtlas: '/images/icon-atlas.png',
+        iconAtlas: BASE_URL + '/images/icon-atlas.png',
         iconMapping: ICON_MAPPING,
         sizeScale: 0.5,
         billboard: false,
@@ -187,7 +204,7 @@ export default function Component(props: {
       })
     )
 
-  if (settingsShowLayers['DRT Anfragen'])
+  if (settingsShowLayers.requests)
     layers.push(
       //@ts-ignore:
       new DrtRequestLayer({

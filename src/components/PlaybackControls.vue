@@ -1,10 +1,12 @@
 <template lang="pug">
-#vue-component
-  vue-slider.slider(v-model="sliderValue"
+.slider-thingy
+  b-slider.slider(
+    v-model="sliderValue"
     v-bind="sliderOptions"
+    size="is-large"
     @dragging="dragging"
-    @drag-start="dragStart"
-    @drag-end="dragEnd")
+    @dragstart="dragStart"
+    @dragend="dragEnd")
 
   .buttons
     .playpause(@click='toggleSimulation')
@@ -14,105 +16,102 @@
 </template>
 
 <script lang="ts">
-import { Vue, Component, Watch, Prop } from 'vue-property-decorator'
-import VueSlider from 'vue-slider-component'
+import { defineComponent } from 'vue'
 import * as timeConvert from 'convert-seconds'
 
-@Component({ components: { VueSlider }, props: {} })
-export default class VueComponent extends Vue {
-  @Prop({ required: true })
-  private isRunning!: boolean
-
-  @Prop({ required: true })
-  private timeStart!: number
-
-  @Prop({ required: true })
-  private timeEnd!: number
-
-  @Prop({ required: true })
-  private currentTime!: number
-
-  private sliderValue = 0
-
-  private sliderOptions = {
-    min: 0,
-    max: 1000000,
-    clickable: false,
-    dotSize: 30,
-    duration: 0,
-    lazy: true,
-    tooltip: 'active',
-    'tooltip-placement': 'top',
-    'tooltip-formatter': (v: number) => {
+export default defineComponent({
+  name: 'PlaybackControls',
+  props: {
+    isRunning: { type: Boolean, required: true },
+    timeStart: { type: Number, required: true },
+    timeEnd: { type: Number, required: true },
+    currentTime: { type: Number, required: true },
+  },
+  data: () => {
+    return {
+      pauseWhileDragging: false,
+      sliderValue: 0,
+      sliderOptions: {
+        min: 0,
+        max: 1000000,
+        clickable: false,
+        duration: 0,
+        lazy: true,
+        tooltip: true,
+        'tooltip-placement': 'top',
+      } as any,
+    }
+  },
+  mounted() {
+    this.sliderOptions['custom-formatter'] = (v: number) => {
       return this.convertSecondsToClockTimeMinutes(v)
-    },
-  }
-
-  private toggleSimulation() {
-    this.$emit('click')
-  }
-
-  private convertSecondsToClockTimeMinutes(index: number) {
-    const seconds = this.getSecondsFromSlider(index)
-
-    try {
-      const hms = timeConvert(seconds)
-      const minutes = ('00' + hms.minutes).slice(-2)
-      return `${hms.hours}:${minutes}`
-    } catch (e) {
-      return '00:00'
     }
-  }
-
-  private pauseWhileDragging = false
-
-  private dragStart() {
-    if (this.isRunning) {
-      this.pauseWhileDragging = true
-      this.$emit('click')
-    }
-  }
-
-  private dragEnd() {
-    if (this.pauseWhileDragging) this.$emit('click')
-    this.pauseWhileDragging = false
-  }
-
-  private dragging(value: number) {
-    this.$emit('time', this.getSecondsFromSlider(value))
-  }
-
-  private onKeyPressed(ev: KeyboardEvent) {
-    if (ev.code === 'Space') this.toggleSimulation()
-  }
-
-  private getSecondsFromSlider(value: number) {
-    let seconds = ((this.timeEnd - this.timeStart) * value) / 1000000.0
-    if (seconds === this.timeEnd) seconds = this.timeEnd - 1
-    return seconds
-  }
-
-  @Watch('currentTime') handleTimeChanged() {
-    this.sliderValue =
-      (1000000.0 * (this.currentTime - this.timeStart)) / (this.timeEnd - this.timeStart)
-  }
-
-  private mounted() {
     window.addEventListener('keyup', this.onKeyPressed)
-  }
+  },
 
-  private beforeDestroy() {
+  beforeDestroy() {
     window.removeEventListener('keyup', this.onKeyPressed)
-  }
-}
+  },
+  watch: {
+    currentTime() {
+      this.sliderValue =
+        (1000000.0 * (this.currentTime - this.timeStart)) / (this.timeEnd - this.timeStart)
+    },
+  },
+
+  methods: {
+    toggleSimulation() {
+      this.$emit('click')
+    },
+
+    convertSecondsToClockTimeMinutes(index: number) {
+      const seconds = this.getSecondsFromSlider(index)
+
+      try {
+        const hms = timeConvert(seconds)
+        const minutes = ('00' + hms.minutes).slice(-2)
+        return `${hms.hours}:${minutes}`
+      } catch (e) {
+        return '00:00'
+      }
+    },
+
+    dragStart() {
+      if (this.isRunning) {
+        this.pauseWhileDragging = true
+        this.$emit('click')
+      }
+    },
+
+    dragEnd() {
+      if (this.pauseWhileDragging) this.$emit('click')
+      this.pauseWhileDragging = false
+    },
+
+    dragging(value: number) {
+      this.$emit('time', this.getSecondsFromSlider(value))
+    },
+
+    onKeyPressed(ev: KeyboardEvent) {
+      if (ev.code === 'Space') this.toggleSimulation()
+    },
+
+    getSecondsFromSlider(value: number) {
+      let seconds = ((this.timeEnd - this.timeStart) * value) / 1000000.0
+      if (seconds === this.timeEnd) seconds = this.timeEnd - 1
+      return seconds
+    },
+  },
+})
 </script>
 
 <style scoped lang="scss">
 @import '@/styles.scss';
 
-#vue-component {
+.slider-thingy {
   display: flex;
   flex-direction: row;
+  z-index: 1;
 }
 
 .slider {
@@ -148,7 +147,7 @@ export default class VueComponent extends Vue {
 }
 
 @media only screen and (max-width: 640px) {
-  #vue-component {
+  .slider-thingy {
     display: flex;
     flex-direction: row;
   }

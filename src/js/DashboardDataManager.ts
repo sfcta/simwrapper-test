@@ -36,9 +36,10 @@ interface configuration {
 export interface FilterDefinition {
   dataset: string
   column: string
+  value: any
   operator?: string
   invert?: boolean
-  value: any
+  range?: boolean
 }
 
 export interface NetworkLinks {
@@ -55,11 +56,18 @@ export default class DashboardDataManager {
     this.fileApi = this.getFileSystem(this.root)
   }
 
+  private files: any[] = []
+  private threads: Worker[] = []
+  private subfolder = ''
+  private root = ''
+  private fileApi: FileSystemConfig
+  private networks: { [id: string]: Promise<NetworkLinks> } = {}
+
   public kill() {
     for (const worker of this.threads) worker.terminate()
   }
 
-  public async getFilteredDataset(config: { dataset: string }) {
+  public getFilteredDataset(config: { dataset: string }) {
     const filteredRows = this.datasets[config.dataset].filteredRows
     return { filteredRows }
   }
@@ -101,8 +109,8 @@ export default class DashboardDataManager {
       if (!this.datasets[config.dataset]) {
         console.log('load:', config.dataset)
 
-        // allRows immediately returns a Promise<>, which we wait on so that
-        // multiple charts don't all try to fetch the dataset individually
+        // fetchDataset() immediately returns a Promise<>, which we wait on
+        // so that multiple charts don't all try to fetch the dataset individually
         this.datasets[config.dataset] = {
           dataset: this.fetchDataset(config),
           activeFilters: {},
@@ -155,6 +163,7 @@ export default class DashboardDataManager {
       filterListeners: new Set(),
       dataset: new Promise<DataTable>((resolve, reject) => {
         const thread = new DataFetcherWorker()
+        // console.log('NEW WORKER', thread)
         this.threads.push(thread)
         try {
           thread.postMessage({ config: fullConfig, featureProperties })
@@ -194,11 +203,6 @@ export default class DashboardDataManager {
     }
   }
 
-  /**
-   *
-   * @param path Full path/filename to the network file
-   * @returns network (format TBA)
-   */
   public async getRoadNetwork(filename: string, subfolder: string, vizDetails: any) {
     const path = `/${subfolder}/${filename}`
 
@@ -283,7 +287,7 @@ export default class DashboardDataManager {
   // }
 
   public setFilter(filter: FilterDefinition) {
-    const { dataset, column, value, invert } = filter
+    const { dataset, column, value, invert, range } = filter
 
     console.log('> setFilter', dataset, column, value)
     // Filter might be single or an array; make it an array.
@@ -297,7 +301,7 @@ export default class DashboardDataManager {
     if (!values.length) {
       delete allFilters[column]
     } else {
-      allFilters[column] = { values, invert }
+      allFilters[column] = { values, invert, range }
     }
     this.updateFilters(dataset) // this is async
   }
@@ -306,7 +310,7 @@ export default class DashboardDataManager {
     const selectedDataset = this.datasets[config.dataset]
     if (!selectedDataset) throw Error('No dataset named: ' + config.dataset)
 
-    console.log(22, config.dataset, this.datasets[config.dataset])
+    // console.log(22, config.dataset, this.datasets[config.dataset])
     this.datasets[config.dataset].filterListeners.add(listener)
   }
 
@@ -323,6 +327,7 @@ export default class DashboardDataManager {
   public clearCache() {
     this.kill() // any stragglers must die
     this.datasets = {}
+    this.networks = {}
   }
 
   // ---- PRIVATE STUFFS -----------------------
@@ -348,6 +353,11 @@ export default class DashboardDataManager {
     console.log('FILTERS:', metaData.activeFilters)
     console.log('TOTLROWS', numberOfRowsInFullDataset)
 
+    // we will go thru each filter for this dataset and set the elements
+    // to false whenever a row fails a filter.
+    // This implements "AND" logic.
+    const hasMatchedFilters = new Array(numberOfRowsInFullDataset).fill(true)
+
     const ltgt = /^(<|>)/ // starts with < or >
 
     for (const [column, spec] of Object.entries(metaData.activeFilters)) {
@@ -360,39 +370,76 @@ export default class DashboardDataManager {
       if (ltgt.test(spec.values[0])) {
         if (spec.values[0].startsWith('<=')) {
           spec.conditional = '<='
-          spec.values[0] = parseFloat(spec.values[0].substring(2).trim())
+          spec.values[0] = spec.values[0].substring(2).trim()
         } else if (spec.values[0].startsWith('>=')) {
           spec.conditional = '>='
-          spec.values[0] = parseFloat(spec.values[0].substring(2).trim())
+          spec.values[0] = spec.values[0].substring(2).trim()
         } else if (spec.values[0].startsWith('<')) {
           spec.conditional = '<'
-          spec.values[0] = parseFloat(spec.values[0].substring(1).trim())
+          spec.values[0] = spec.values[0].substring(1).trim()
         } else if (spec.values[0].startsWith('>')) {
           spec.conditional = '>'
-          spec.values[0] = parseFloat(spec.values[0].substring(1).trim())
+          spec.values[0] = spec.values[0].substring(1).trim()
         }
       } else {
         // handle case where we are testing equal/inequal and its a "numeric" string
         if (spec.values.length === 1 && typeof spec.values[0] === 'string') {
           const numericString = parseFloat(spec.values[0])
-          if (!Number.isNaN(numericString)) spec.values.push(numericString)
+          if (Number.isFinite(numericString)) spec.values.push(numericString)
         }
       }
 
-      console.log('HEREWEGO: ', spec)
-      // update every row
+      // test every row: falsify if it fails the test.
       for (let i = 0; i < numberOfRowsInFullDataset; i++) {
-        if (checkFilterValue(spec, dataColumn.values[i])) {
-          const row = {} as any
-          allColumns.forEach(col => (row[col] = dataset[col].values[i]))
-          filteredRows.push(row)
+        if (!checkFilterValue(spec, dataColumn.values[i])) {
+          hasMatchedFilters[i] = false
         }
       }
     }
 
-    console.log('FILTROWS', filteredRows)
+    // Build the final filtered dataset based on hasMatchedFilters
+    for (let i = 0; i < numberOfRowsInFullDataset; i++) {
+      if (hasMatchedFilters[i]) {
+        const row = {} as any
+        allColumns.forEach(col => (row[col] = dataset[col].values[i]))
+        filteredRows.push(row)
+      }
+    }
+
     metaData.filteredRows = filteredRows
     this.notifyListeners(datasetId)
+  }
+
+  private checkFilterValue(
+    spec: { conditional: string; invert: boolean; values: any[] },
+    elementValue: any
+  ) {
+    // lookup closure functions for < > <= >=
+    const conditionals: any = {
+      '<': () => {
+        return elementValue < spec.values[0]
+      },
+      '<=': () => {
+        return elementValue <= spec.values[0]
+      },
+      '>': () => {
+        return elementValue > spec.values[0]
+      },
+      '>=': () => {
+        return elementValue >= spec.values[0]
+      },
+    }
+
+    let isValueInFilterSpec: boolean
+
+    if (spec.conditional) {
+      isValueInFilterSpec = conditionals[spec.conditional]()
+    } else {
+      isValueInFilterSpec = spec.values.includes(elementValue)
+    }
+
+    if (spec.invert) return !isValueInFilterSpec
+    return isValueInFilterSpec
   }
 
   private notifyListeners(datasetId: string) {
@@ -401,9 +448,6 @@ export default class DashboardDataManager {
       notifyListener(datasetId)
     }
   }
-
-  private files: any[] = []
-  private threads: Worker[] = []
 
   private async fetchDataset(config: { dataset: string }) {
     if (!this.files.length) {
@@ -414,6 +458,7 @@ export default class DashboardDataManager {
     return new Promise<DataTable>((resolve, reject) => {
       const thread = new DataFetcherWorker()
       this.threads.push(thread)
+      // console.log('NEW WORKER', thread)
       try {
         thread.postMessage({
           fileSystemConfig: this.fileApi,
@@ -493,10 +538,6 @@ export default class DashboardDataManager {
     return svnProject[0]
   }
 
-  private subfolder = ''
-  private root = ''
-  private fileApi: FileSystemConfig
-
   private datasets: {
     [id: string]: {
       dataset: Promise<DataTable>
@@ -505,12 +546,10 @@ export default class DashboardDataManager {
       filterListeners: Set<any>
     }
   } = {}
-
-  private networks: { [id: string]: Promise<NetworkLinks> } = {}
 }
 
 export function checkFilterValue(
-  spec: { conditional: string; invert: boolean; values: any[] },
+  spec: { conditional: string; invert: boolean; values: any[]; range?: boolean },
   elementValue: any
 ) {
   // lookup closure functions for < > <= >=
@@ -531,7 +570,9 @@ export function checkFilterValue(
 
   let isValueInFilterSpec: boolean
 
-  if (spec.conditional) {
+  if (spec.range) {
+    isValueInFilterSpec = elementValue >= spec.values[0] && elementValue <= spec.values[1]
+  } else if (spec.conditional) {
     isValueInFilterSpec = conditionals[spec.conditional]()
   } else {
     isValueInFilterSpec = spec.values.includes(elementValue)

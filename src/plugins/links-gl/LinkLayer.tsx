@@ -29,6 +29,7 @@ export default function Component({
   newWidths = new Float32Array(),
   dark = false,
   scaleWidth = 1,
+  mapIsIndependent = false,
 }) {
   // ------- draw frame begins here -----------------------------
 
@@ -43,8 +44,12 @@ export default function Component({
   const isCategorical = colorRampType === 0 || buildColumn?.type == DataType.STRING
 
   // register setViewState in global view updater so we can respond to external map motion
-  REACT_VIEW_HANDLES[viewId] = () => {
-    setViewState(globalStore.state.viewState)
+  REACT_VIEW_HANDLES[viewId] = (view: any) => {
+    if (view) {
+      setViewState(view)
+    } else {
+      setViewState(globalStore.state.viewState)
+    }
   }
 
   function handleClick() {
@@ -54,7 +59,8 @@ export default function Component({
   function handleViewState(view: any) {
     setViewState(view)
     view.center = [view.longitude, view.latitude]
-    globalStore.commit('setMapCamera', view)
+
+    if (!mapIsIndependent) globalStore.commit('setMapCamera', view)
   }
 
   function precise(x: number) {
@@ -102,7 +108,7 @@ export default function Component({
     // if there is base data, it will also show values and diff vs. base for both color and width.
 
     try {
-      // tooltip color valuess------------
+      // tooltip color values ------------
       let tooltip = buildTooltipHtml(buildColumn, baseColumn, index)
 
       // tooltip widths------------
@@ -141,7 +147,7 @@ export default function Component({
     },
     widthUnits: 'pixels',
     widthScale: widthDivisor,
-    widthMinPixels: 1,
+    widthMinPixels: 0.5,
     widthMaxPixels: 50,
     pickable: true,
     opacity: 1,
@@ -152,11 +158,12 @@ export default function Component({
       getSourcePosition: [links.source],
       getTargetPosition: [links.dest],
       getColor: [newColors, dark],
-      getWidth: [newWidths, scaleWidth],
+      getWidth: [newWidths],
     },
     transitions: {
-      getColor: 200,
-      getWidth: 200,
+      getColor: 250,
+      getWidth: 250,
+      widthScale: 250,
     },
     parameters: {
       depthTest: false,

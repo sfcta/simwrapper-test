@@ -5,7 +5,11 @@
   .output-table(v-if="entries.length")
     .row(v-for="row,i in entries" :key="'entry'+i")
       .cell.top-label(:style="row.style") {{ row.title }}
-      input.input.is-small.cell.top-value(:style="row.style" v-model="row.value" @change="boxChanged")
+      b-input.b-input-tight.cell.top-value(
+        v-model="row.value"
+        :style="row.style"
+        @input="boxChanged"
+      )
 
   .output-table(v-if="table.length" style="margin-top: 1rem")
     .row(v-for="row,i in table" :key="'row'+i")
@@ -15,8 +19,10 @@
 </template>
 
 <script lang="ts">
+import { defineComponent } from 'vue'
+import type { PropType } from 'vue'
+
 import { FileSystemConfig, YamlConfigs } from '@/Globals'
-import { Vue, Component, Watch, Prop } from 'vue-property-decorator'
 
 import TopSheetWorker from './TopSheetWorker.worker.ts?worker'
 import globalStore from '@/store'
@@ -27,35 +33,30 @@ export type TableRow = {
   style?: any
 }
 
-@Component({ components: {} })
-export default class VueComponent extends Vue {
-  @Prop({ required: true }) private fileSystemConfig!: FileSystemConfig
-  @Prop({ required: true }) private subfolder!: string
-  @Prop({ required: true }) private files!: string[]
-  @Prop({ required: true }) private yaml!: string
-  @Prop({ required: true }) private allConfigFiles!: YamlConfigs
-  @Prop({ required: false }) private cardId?: string
-
-  private solverThread!: any
-
-  private globalState = globalStore.state
-
-  private table: TableRow[] = []
-  private entries: { key: string; title: string; value: any }[] = []
-  private title = ''
-
-  private formattedValue(value: any) {
-    if (!isNaN(value)) return value.toLocaleString([this.$store.state.locale, 'en'])
-    if (value === undefined) return '-?-'
-    return value
-  }
-
-  private mounted() {
-    console.log('TOPSHEET YAML IS', this.yaml)
+export default defineComponent({
+  name: 'TopSheet',
+  props: {
+    fileSystemConfig: { type: Object as PropType<FileSystemConfig>, required: true },
+    subfolder: { type: String, required: true },
+    files: { type: Array as PropType<string[]>, required: true },
+    yaml: { type: String, required: true },
+    allConfigFiles: { type: Object as PropType<YamlConfigs>, required: true },
+    cardId: String,
+  },
+  data: () => {
+    return {
+      globalState: globalStore.state,
+      solverThread: null as any,
+      table: [] as TableRow[],
+      entries: [] as { key: string; title: string; value: any }[],
+      title: '',
+    }
+  },
+  mounted() {
     if (this.files.length) this.runTopSheet()
-  }
+  },
 
-  private beforeDestroy() {
+  beforeDestroy() {
     try {
       if (this.solverThread) {
         this.solverThread.terminate()
@@ -64,84 +65,91 @@ export default class VueComponent extends Vue {
     } catch (e) {
       console.warn(e)
     }
-  }
-
-  @Watch('globalState.locale')
-  private themeChanged() {
-    if (this.solverThread) {
-      this.solverThread.postMessage({
-        command: 'updateCalculations',
-        entries: this.entries,
-        locale: this.globalState.locale,
-      })
-    }
-  }
-
-  private async boxChanged() {
-    console.log('changed!')
-    if (this.solverThread) {
-      this.solverThread.postMessage({
-        command: 'updateCalculations',
-        entries: this.entries,
-        locale: this.globalState.locale,
-      })
-    }
-  }
-
-  private async runTopSheet() {
-    if (!this.files.length) return
-
-    try {
-      if (!this.solverThread) {
-        console.log('spawning topsheet thread')
-        this.solverThread = new TopSheetWorker()
-        this.solverThread.onmessage = (message: MessageEvent) => {
-          this.processWorkerMessage(message)
-        }
+  },
+  watch: {
+    'globalState.locale'() {
+      if (this.solverThread) {
+        this.solverThread.postMessage({
+          command: 'updateCalculations',
+          entries: this.entries,
+          locale: this.globalState.locale,
+        })
       }
+    },
+  },
+  methods: {
+    formattedValue(value: any) {
+      if (!isNaN(value)) return value.toLocaleString([this.$store.state.locale, 'en'])
+      if (value === undefined) return '-?-'
+      return value
+    },
 
-      this.solverThread.postMessage({
-        command: 'runTopSheet',
-        fileSystemConfig: this.fileSystemConfig,
-        subfolder: this.subfolder,
-        files: this.files,
-        yaml: this.yaml,
-        locale: this.$store.state.locale,
-        allConfigFiles: this.allConfigFiles,
-      })
-    } catch (e) {
-      const message = '' + e
-      console.log(message)
-      this.table = []
-      // this.table = [{ title: message, value: '', style: { backgroundColor: 'yellow' } }]
-    }
-  }
+    async boxChanged() {
+      console.log('changed!')
+      if (this.solverThread) {
+        this.solverThread.postMessage({
+          command: 'updateCalculations',
+          entries: this.entries,
+          locale: this.globalState.locale,
+        })
+      }
+    },
 
-  private processWorkerMessage(message: MessageEvent) {
-    const data = message.data
-    switch (data.response) {
-      case 'title':
-        if (this.cardId) this.$emit('titles', data.title)
-        else this.title = data.title
-        break
-      case 'entries':
-        this.entries = data.entryFields
-        break
-      case 'results':
-        this.table = data.results
-        this.$emit('isLoaded')
-        break
-      case 'error':
-        this.$store.commit('error', data.message)
-        this.$emit('isLoaded')
-        break
-      default:
-        // shouldn't be here
-        this.$emit('isLoaded')
-        console.error(data)
-    }
-  }
-}
+    async runTopSheet() {
+      if (!this.files.length) return
+
+      try {
+        if (!this.solverThread) {
+          console.log('spawning topsheet thread')
+          this.solverThread = new TopSheetWorker()
+          this.solverThread.onmessage = (message: MessageEvent) => {
+            this.processWorkerMessage(message)
+          }
+        }
+
+        this.solverThread.postMessage({
+          command: 'runTopSheet',
+          fileSystemConfig: this.fileSystemConfig,
+          subfolder: this.subfolder,
+          files: this.files,
+          yaml: this.yaml,
+          locale: this.$store.state.locale,
+          allConfigFiles: this.allConfigFiles,
+        })
+      } catch (e) {
+        const message = '' + e
+        console.log(message)
+        this.table = []
+        // this.table = [{ title: message, value: '', style: { backgroundColor: 'yellow' } }]
+      }
+    },
+
+    processWorkerMessage(message: MessageEvent) {
+      const data = message.data
+      switch (data.response) {
+        case 'title':
+          if (this.cardId) this.$emit('titles', data.title)
+          else this.title = data.title
+          break
+        case 'entries':
+          this.entries = data.entryFields
+          break
+        case 'results':
+          this.table = data.results
+          this.$emit('isLoaded')
+          break
+        case 'error':
+          this.$store.commit('error', data.message)
+          this.$emit('isLoaded')
+          break
+        default:
+          // shouldn't be here
+          this.$emit('isLoaded')
+          console.error(data)
+      }
+    },
+  },
+})
 </script>
 
 <style scoped lang="scss">
@@ -175,6 +183,8 @@ h3.curate-heading {
   padding-right: 1rem;
   display: table-cell;
   font-size: 1.1rem;
+  line-height: 1.2rem;
+  padding-bottom: 0.4rem;
 }
 
 // .top-label {
@@ -183,5 +193,6 @@ h3.curate-heading {
 .top-value {
   text-align: right;
   font-weight: bold;
+  // word-break: break-all;
 }
 </style>

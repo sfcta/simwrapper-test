@@ -1,6 +1,7 @@
 $mainFont: 'Titillium Web', 'Roboto', 'Open Sans', Avenir, Arial, Helvetica, sans-serif; // 'Titillium Web'
 $fancyFont: 'Titillium Web', 'Space Grotesk', 'Roboto Slab', Roboto, Avenir, Arial, Helvetica,
   sans-serif; // 'Titillium Web',
+$appTag: #65cd9e;
 $matsimBlue: #4b7cc4;
 $tuRed: #b40d1e;
 $steelGray: #2a3c4f;
@@ -12,11 +13,10 @@ $colorPurple: #6a1b9a;
 $colorYellow: #ffdf80;
 $paleBackground: #dbd9d7;
 $darkBackground: #181a1b;
-
 $navHeight: 3.25rem;
 $bannerHighlight: #1d3355;
 $sizeMobile: 30em;
-$sizeVessel: 60rem;
+$sizeVessel: 70rem;
 $thumbnailHeight: 10rem;
 $dashboardWidth: 70rem;
 $filterShadow: drop-shadow(0px 2px 4px #22222233);
@@ -24,26 +24,30 @@ $filterShadow: drop-shadow(0px 2px 4px #22222233);
 :root {
   --bg: #edebe4;
   --bgBold: #ffffff;
+  --bgBrowser: #d3dae2;
   --bgCream: #eef2ec;
   --bgCream2: #dddcd7;
   --bgCream3: #dddce7;
   --bgCream4: #e4e3f4;
-  --bgDashboard: #ffffff;
+  --bgDashboard: #fff; // #dbe2e8;
+  --bgDashboardHeader: #f0f0f4; // #dbe2e8;
   --bgHideButton: #ece9f5;
-  --bgHover: #ffd;
+  --bgHover: #eaeaea;
   --bgPanel: #fff;
   --bgPanel2: #ededed;
   --bgPanel3: #e4e4e4;
-  --bgMapPanel: #f2f2f2;
+  --bgMapPanel: #fff;
   --bgTag: #fdffa3;
-  --bgBrowser: #37547c;
-  --bgSplash: linear-gradient(150deg, #c4dbf5, #748add);
+  --bgSplash: #eaeaef;
+  --bgScrollbar: #88888888;
   --bgTabBanner: linear-gradient(150deg, #345be6, #29d299);
+  --bgTreeItem: #079f6f;
   --text: #363636;
   --textBold: #1d3355;
   --textFancy: #564c9d;
   --textPale: #777777;
   --textVeryPale: #bbbbcc;
+  --textPanel: #616672; // #576874;
   --link: #196096;
   --linkHover: #079f6f;
   --linkActive: #bbf1ca;
@@ -56,33 +60,40 @@ $filterShadow: drop-shadow(0px 2px 4px #22222233);
   --splitPanel: #d4dbdd;
   --borderColor: #66666633;
   --borderZoomButtons: 1px solid var(--borderColor);
-  --logoOpacity: opacity(30%);
   --scaleBorder: 1px solid #7974a0;
-  --scaleBg: #ffffffaa;
+  --scaleBg: #ffffff;
+  --sliderThumb: #29d09a;
+
+  --opacityLogo: opacity(70%);
+  --opacityAttribution: opacity(70%);
 }
 
 .dark-mode {
   --bg: #2d3133;
-  --bgBold: #181a1b;
+  --bgBold: #000414;
+  --bgBrowser: #28292c; // #212029; // #18242e;
   --bgCream: #282c2f;
   --bgCream2: #33373a;
   --bgCream3: #344857;
   --bgCream4: #304453;
-  --bgDashboard: #242627;
+  --bgDashboard: #141619;
+  --bgDashboardHeader: #304163;
   --bgHideButton: #32455a;
+  --bgHover: #433b53;
+  --bgMapPanel: #181818;
   --bgPanel: #2a3c4f;
   --bgPanel2: #32455a;
   --bgPanel3: #2f3b49;
-  --bgMapPanel: #181818;
-  --bgTag: #2a3c4f;
-  --bgBrowser: #37547c; // #18242e;
-  --bgSplash: linear-gradient(150deg, #144e50, #23072c);
+  --bgScrollbar: #55555588;
+  --bgSplash: #2a3c4f;
   --bgTabBanner: linear-gradient(150deg, #245858, #1d3486);
-  --bgHover: #4b3c70;
+  --bgTag: #2a3c4f;
+  --bgTreeItem: #216a6d;
   --text: #c6c1b9;
   --textBold: white;
   --textFancy: #a5c4e2;
   --textPale: #aaaaaa;
+  --textPanel: #9caccf; // #8ca7e6; // #576874;
   --textVeryPale: #778;
   --link: #65d68f;
   --linkHover: #a8ffc8;
@@ -94,7 +105,8 @@ $filterShadow: drop-shadow(0px 2px 4px #22222233);
   --splitPanel: #2e343f;
   --borderColor: #00000088;
   --borderZoomButtons: 1px solid #777;
-  --logoOpacity: opacity(30%);
-  --scaleBorder: 1px solid #607894; // #8fabca;
-  --scaleBg: #33333360;
+  --scaleBorder: 1px solid #728cab; // #8fabca;
+  --scaleBg: #283d50;
+  --opacityLogo: opacity(40%);
+  --opacityAttribution: opacity(60%);
 }

@@ -1,105 +1,80 @@
 <template lang="pug">
-.time-slider-main-content
-  vue-slider.time-slider(v-bind="scaleSlider" v-model="sliderValue")
+b-slider.time-slider(
+  v-bind="options"
+  v-model="sliderValue"
+  tooltip-always
+)
+  b-slider-tick(v-for="tick,i in options.data" :key="i" :value="i")
+
 </template>
 
 <script lang="ts">
-import * as timeConvert from 'convert-seconds'
-import vueSlider from 'vue-slider-component'
-import { Vue, Component, Prop, Watch } from 'vue-property-decorator'
+import { defineComponent } from 'vue'
 
-@Component({ components: { 'vue-slider': vueSlider } })
-export default class ScaleSlider extends Vue {
-  @Prop()
-  private initialValue!: number
-
-  @Prop()
-  private useRange!: false
-
-  @Prop()
-  private stops!: any
-
-  private sliderValue: any = 0
-
-  private scaleSlider = {
-    height: 6,
-    piecewise: true,
-    show: false,
-    'enable-cross': false,
-    minRange: 0,
-    data: [
-      0,
-      1,
-      2,
-      5,
-      10,
-      15,
-      20,
-      25,
-      30,
-      35,
-      40,
-      45,
-      50,
-      55,
-      60,
-      65,
-      70,
-      75,
-      80,
-      85,
-      90,
-      95,
-      100,
-      'Alle',
-    ],
-    marks: [0, 25, 50, 75, 'Alle'],
-    contained: true,
-    sliderStyle: [{ backgroundColor: '#f05b72' }, { backgroundColor: '#3498db' }],
-    processStyle: {
-      backgroundColor: '#00bb5588',
-      borderColor: '#f05b72',
-    },
-    tooltip: 'always',
-    'tooltip-placement': 'bottom',
-  }
-
-  // VUE LIFECYCLE HOOKS
-  public created() {}
-
-  public mounted() {
-    this.sliderValue = this.initialValue
-  }
-
-  @Watch('stops')
-  private setStops(newStops: any) {
-    console.log({ newStops })
-    this.stops = newStops
-  }
-
-  @Watch('sliderValue')
-  private sliderChangedEvent(result: any) {
-    this.$emit('change', result)
-  }
-
-  private dataFunction() {
+export default defineComponent({
+  name: 'LineFilterSlider',
+  props: {
+    initialValue: { type: Number, required: true },
+  },
+  data: () => {
     return {
-      value: this.sliderValue,
-      data: this.stops,
+      sliderValue: 0,
+      options: {
+        size: 'is-small',
+        indicator: true,
+        min: 0,
+        max: 100,
+        'tooltip-always': true,
+        tooltip: true,
+        data: [
+          0,
+          1,
+          2,
+          5,
+          10,
+          15,
+          20,
+          25,
+          30,
+          35,
+          40,
+          45,
+          50,
+          55,
+          60,
+          65,
+          70,
+          75,
+          80,
+          85,
+          90,
+          95,
+          100,
+          'Alle',
+        ],
+      } as any,
     }
-  }
-}
+  },
+  // VUE LIFECYCLE HOOKS
+  mounted() {
+    this.options['custom-formatter'] = (val: any) => '' + this.options.data[val]
+    this.sliderValue = this.initialValue
+    this.sliderValue = this.options.data.includes(this.initialValue)
+      ? this.options.data.indexOf(this.initialValue)
+      : 0
+    this.options.max = this.options.data.length - 1
+  },
+  watch: {
+    sliderValue(result: any) {
+      this.$emit('change', this.options.data[result])
+    },
+  },
+})
 </script>
 
 <style scoped>
-@import '../../../node_modules/vue-slider-component/theme/default.css';
-
-.time-slider-main-content {
-  padding: 0.5rem 0.8rem 2rem 0.5rem;
-}
-
 .time-slider {
-  margin-left: 0.5rem;
-  margin-bottom: 0.2rem;
+  max-width: 100%;
+  padding: 0 1rem;
 }
 </style>

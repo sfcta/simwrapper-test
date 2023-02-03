@@ -149,6 +149,18 @@ class SVNFileSystem {
     return response.blob()
   }
 
+  async getFileStream(scaryPath: string): Promise<ReadableStream> {
+    if (this.fsHandle) {
+      const stream = await this._getFileFromChromeFileSystem(scaryPath)
+        .then(response => response.blob())
+        .then(blob => blob.stream())
+      return stream as any
+    } else {
+      const stream = await this._getFileFetchResponse(scaryPath).then(response => response.body)
+      return stream as any
+    }
+  }
+
   async getDirectory(scaryPath: string): Promise<DirectoryEntry> {
     // This can throw lots of errors; we are not going to catch them
     // here so the code further up can deal with errors properly.
@@ -311,41 +323,12 @@ class SVNFileSystem {
   }
 
   private buildListFromHtml(data: string): DirectoryEntry {
-    if (data.indexOf('<ul>') > -1) return this.buildListFromSVN(data)
     if (data.indexOf('SimpleWebServer') > -1) return this.buildListFromSimpleWebServer(data)
+    if (data.indexOf('<ul>') > -1) return this.buildListFromSVN(data)
     if (data.indexOf('<table>') > -1) return this.buildListFromApache24(data)
-    if (data.indexOf('<pre>') > -1) return this.buildListFromNGINX(data)
+    if (data.indexOf('\n<a ') > -1) return this.buildListFromNGINX(data)
 
     return { dirs: [], files: [], handles: {} }
-  }
-
-  private buildListFromNGINX(data: string): DirectoryEntry {
-    const regex = /"(.*?)"/
-    const dirs = []
-    const files = []
-
-    const lines = data.split('\n')
-
-    for (const line of lines) {
-      // match rows listing href links only: should be all folders/files only
-      const href = line.indexOf('<a href="')
-      if (href < 0) continue
-
-      const entry = line.substring(href).match(regex)
-      if (!entry) continue
-
-      const name = entry[1] // regex returns first match in [1]
-
-      // skip parent link
-      if (name === '../') continue
-
-      if (name.endsWith('/')) {
-        dirs.push(name.substring(0, name.length - 1))
-      } else {
-        files.push(name)
-      }
-    }
-    return { dirs, files, handles: {} }
   }
 
   private buildListFromSimpleWebServer(data: string): DirectoryEntry {
@@ -420,6 +403,36 @@ class SVNFileSystem {
 
       if (name.endsWith('/')) dirs.push(name.substring(0, name.length - 1))
       else files.push(name)
+    }
+    return { dirs, files, handles: {} }
+  }
+
+  private buildListFromNGINX(data: string): DirectoryEntry {
+    const regex = /"(.*?)"/
+    const dirs = []
+    const files = []
+
+    const lines = data.split('\n')
+
+    for (const line of lines) {
+      // match rows listing href links only: should be all folders/files only
+      const href = line.indexOf('<a href="')
+      if (href < 0) continue
+
+      const entry = line.substring(href).match(regex)
+      if (!entry) continue
+
+      // got one!
+      const name = entry[1] // regex returns first match in [1]
+
+      // skip parent link
+      if (name === '../') continue
+
+      if (name.endsWith('/')) {
+        dirs.push(name.substring(0, name.length - 1))
+      } else {
+        files.push(name)
+      }
     }
     return { dirs, files, handles: {} }
   }

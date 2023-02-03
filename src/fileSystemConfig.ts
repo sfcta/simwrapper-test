@@ -2,6 +2,8 @@ import { get, set, clear } from 'idb-keyval'
 import { FileSystemConfig, FileSystemAPIHandle } from '@/Globals'
 import globalStore from '@/store'
 
+const BASE_URL = import.meta.env.BASE_URL
+
 // The URL contains the websiteLiveHost, calculated at runtime
 const loc = window.location
 const webLiveHostname = loc.hostname
@@ -29,7 +31,7 @@ export function addLocalFilesystem(handle: FileSystemAPIHandle, key: string | nu
   return system.slug
 }
 
-const fileSystems: FileSystemConfig[] = [
+let fileSystems: FileSystemConfig[] = [
   {
     name: webLiveHostname + ' live folders',
     slug: 'live',
@@ -38,10 +40,16 @@ const fileSystems: FileSystemConfig[] = [
     hidden: true,
   },
   {
+    name: 'SFCTA Prospector',
+    slug: 'champ',
+    description: 'Shared CHAMP model runs',
+    baseURL: 'http://prospector/champ_runs',
+  },
+  {
     name: 'Public Data Folder',
     slug: 'files',
     description: 'Data from /public/data folder',
-    baseURL: loc.origin + '/' + 'data',
+    baseURL: loc.origin + BASE_URL + 'data',
     hidden: true,
   },
 
@@ -53,24 +61,18 @@ const fileSystems: FileSystemConfig[] = [
     hidden: true,
   },
   {
-    name: 'Localhost',
+    name: 'localhost:8000',
     slug: 'local',
     description: 'Files on this computer, shared using "simwrapper serve" tool',
     baseURL: 'http://localhost:8000',
     thumbnail: '/simwrapper/images/thumb-localfiles.jpg',
   },
   {
-    name: 'SFCTA Prospector',
-    slug: 'champ',
-    description: 'Shared CHAMP model runs',
-    baseURL: 'http://prospector/champ_runs',
-  },
-  {
-    name: 'Sample Data',
-    slug: 'samples',
-    description: 'Some test data for SFCTA',
-    baseURL: 'https://svn.vsp.tu-berlin.de/repos/public-svn/shared/billy/simwrapper/sample-data',
-    thumbnail: '/simwrapper/images/thumb-localfiles.jpg',
+    name: 'SimWrapper Examples',
+    slug: 'examples',
+    description: 'Pre-built dashboards for exploration',
+    thumbnail: 'images/thumb-localfiles.jpg',
+    baseURL: 'https://svn.vsp.tu-berlin.de/repos/public-svn/shared/simwrapper',
   },
 ]
 
@@ -94,6 +96,18 @@ for (let port = 8050; port < 8099; port++) {
     baseURL: websiteLiveHost + `:${port}/_f_`, // e.g. 'http://localhost:8050/_f_',
     hidden: true,
   })
+}
+
+// merge user shortcuts
+try {
+  const storedShortcuts = localStorage.getItem('projectShortcuts')
+  if (storedShortcuts) {
+    const shortcuts = JSON.parse(storedShortcuts) as any[]
+    const unique = fileSystems.filter(root => !(root.slug in shortcuts))
+    fileSystems = [...Object.values(shortcuts), ...unique]
+  }
+} catch (e) {
+  console.error('ERROR MERGING URL SHORTCUTS:', '' + e)
 }
 
 export default fileSystems

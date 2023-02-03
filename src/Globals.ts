@@ -1,8 +1,11 @@
-export const DEFAULT_PROJECTION = 'EPSG:2227'
+export const DEFAULT_PROJECTION = ''
 
 export const MAP_STYLES_ONLINE = {
   light: 'mapbox://styles/mapbox/light-v10',
   dark: 'mapbox://styles/vsp-tu-berlin/ckek59op0011219pbwfar1rex',
+  // light: 'mapbox://styles/mapbox/outdoors-v11',
+  // dark: 'mapbox://styles/mapbox/outdoors-v11',
+  // dark: 'mapbox://styles/mapbox/light-v10',
 }
 
 export const MAP_STYLES_OFFLINE = {
@@ -11,8 +14,13 @@ export const MAP_STYLES_OFFLINE = {
   dark: { version: 8, layers: [], sources: {} },
 }
 
+export const BG_COLOR_DASHBOARD = {
+  light: '#fff',
+  dark: '#181818',
+}
+
 export const MAPBOX_TOKEN =
-  'pk.eyJ1Ijoic2ZjdGEiLCJhIjoiY2ozdXBhNm1mMDFkaTJ3dGRmZHFqanRuOCJ9.KDmACTJBGNA6l0CyPi1Luw'
+  'pk.eyJ1IjoidnNwLXR1LWJlcmxpbiIsImEiOiJjamNpemh1bmEzNmF0MndudHI5aGFmeXpoIn0.u9f04rjFo7ZbWiSceTTXyA'
 
 export enum Status {
   INFO,
@@ -114,7 +122,7 @@ export interface FileSystemConfig {
 }
 
 export interface VisualizationPlugin {
-  component: Vue.VueConstructor
+  component: any
   kebabName: string
   prettyName: string
   description?: string

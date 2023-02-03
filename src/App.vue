@@ -4,7 +4,7 @@
   .center-area
     login-panel.login-panel
     router-view.main-content
-    p(style="text-justify: center; margin: auto auto; font-size: 2rem;"): i • S i m W r a p p e r •
+    p.splash-label(v-if="showSplash") • Loading SimWrapper •
 
   //.message-zone(v-if="state.statusErrors.length")
     .message-error(v-for="err,i in state.statusErrors")
@@ -29,9 +29,9 @@ const i18n = {
     },
   },
 }
+
+import { defineComponent } from 'vue'
 import maplibregl from 'maplibre-gl'
-import Buefy from 'buefy'
-import { Vue, Component, Prop, Watch } from 'vue-property-decorator'
 import { get, set, clear } from 'idb-keyval'
 
 import globalStore from '@/store'
@@ -48,11 +48,100 @@ writableMapBox.accessToken = MAPBOX_TOKEN
 
 let doThisOnceForLocalFiles = true
 
-@Component({ i18n, components: { LoginPanel } })
-class App extends Vue {
-  private state = globalStore.state
+export default defineComponent({
+  name: 'SimWrapper',
+  i18n,
+  components: { LoginPanel },
+  data: () => {
+    return {
+      state: globalStore.state,
+      showSplash: true,
+      splasher: {} as any,
+    }
+  },
+  computed: {
+    topNavLinks(): any[] {
+      // {name, description, need_password, svn, thumbnail, url }
+      // a '/' will be prepended
+      const home: any[] = [{ name: 'scout', url: '' }]
+      const topLinks = home.concat(this.state.svnProjects)
 
-  private async mounted() {
+      return topLinks
+    },
+    isDarkMode(): boolean {
+      return this.state.isDarkMode
+    },
+  },
+  methods: {
+    toggleUIPanels(event: KeyboardEvent) {
+      // shift-alt-Q: left side QuickView panel
+      if (event.altKey && event.shiftKey && event.keyCode === 81) {
+        console.log('QUICKVIEW')
+        this.$store.commit('toggleShowLeftBar')
+        this.$store.commit('resize')
+      }
+      // shift-alt-W: wide screen mode
+      if (event.altKey && event.shiftKey && event.keyCode === 87) {
+        console.log('WIIIDE')
+        this.$store.commit('toggleFullWidth')
+        this.$store.commit('resize')
+      }
+      return
+    },
+
+    // ------ Find Chrome Local File System roots ----
+    async setupLocalFiles() {
+      if (globalStore.state.localFileHandles.length) return
+
+      const lfsh = (await get('fs')) as { key: string; handle: any }[]
+      if (lfsh && lfsh.length) {
+        for (const entry of lfsh) {
+          addLocalFilesystem(entry.handle, entry.key)
+        }
+      }
+    },
+
+    /**
+     * Set Mapbox styles to be blank if we cannot reach the internet
+     */
+    setOnlineOrOfflineMode() {
+      const url = 'https://raw.githubusercontent.com/simwrapper/simwrapper/master/package.json'
+      fetch(url)
+        .then(response => {
+          console.log('online!!')
+        })
+        .catch(error => {
+          console.log('offline!')
+          this.$store.commit('setMapStyles', MAP_STYLES_OFFLINE)
+        })
+    },
+
+    removeAllErrors() {
+      this.$store.commit('clearAllErrors')
+    },
+
+    toggleLocale() {
+      const newLocale = this.state.locale === 'en' ? 'de' : 'en'
+      this.$store.commit('setLocale', newLocale)
+      this.$root.$i18n.locale = newLocale
+    },
+
+    toggleTheme() {
+      this.$store.commit('rotateColors')
+    },
+
+    // @Watch('state.isFullScreen') toggleFullScreen(isFullPage: boolean) {
+    toggleFullScreen(isFullPage: boolean) {
+      if (isFullPage) {
+        document.body.classList.add('full-screen-page')
+        document.documentElement.style.overflowY = 'auto'
+      } else {
+        document.body.classList.remove('full-screen-page')
+        document.documentElement.style.overflowY = null as any
+      }
+    },
+  },
+  async mounted() {
     // theme
     const theme = localStorage.getItem('colorscheme')
       ? localStorage.getItem('colorscheme')
@@ -60,7 +149,7 @@ class App extends Vue {
       ? ColorScheme.DarkMode
       : ColorScheme.LightMode
 
-    if (theme === ColorScheme.DarkMode) this.$store.commit('rotateColors')
+    if (theme === ColorScheme.LightMode) this.$store.commit('rotateColors')
     document.body.style.backgroundColor = theme === ColorScheme.LightMode ? '#edebe4' : '#2d3133'
 
     this.toggleFullScreen(true)
@@ -70,101 +159,27 @@ class App extends Vue {
     if (doThisOnceForLocalFiles) await this.setupLocalFiles()
 
     document.addEventListener('keydown', this.toggleUIPanels)
-  }
 
-  private beforeDestroy() {
-    document.removeEventListener('keyup', this.toggleUIPanels)
-  }
-
-  private toggleUIPanels(event: any) {
-    // shift-alt-Q: left side QuickView panel
-    if (event.altKey && event.shiftKey && event.keyCode === 81) {
-      console.log('QUICKVIEW')
-      this.$store.commit('toggleShowLeftBar')
-      this.$store.commit('resize')
-    }
-    // shift-alt-W: wide screen mode
-    if (event.altKey && event.shiftKey && event.keyCode === 87) {
-      console.log('WIIIDE')
-      this.$store.commit('toggleFullWidth')
-      this.$store.commit('resize')
-    }
-    return
-  }
-
-  // ------ Find Chrome Local File System roots ----
-  private async setupLocalFiles() {
-    if (globalStore.state.localFileHandles.length) return
-
-    const lfsh = (await get('fs')) as { key: string; handle: any }[]
-    if (lfsh && lfsh.length) {
-      for (const entry of lfsh) {
-        addLocalFilesystem(entry.handle, entry.key)
-      }
-    }
-  }
-
-  /**
-   * Set Mapbox styles to be blank if we cannot reach the internet
-   */
-  private setOnlineOrOfflineMode() {
-    const url = 'https://raw.githubusercontent.com/simwrapper/simwrapper/master/package.json'
-    fetch(url)
-      .then(response => {
-        console.log('online!!')
-      })
-      .catch(error => {
-        console.log('offline!')
-        this.$store.commit('setMapStyles', MAP_STYLES_OFFLINE)
-      })
-  }
-
-  private get topNavLinks() {
-    // {name, description, need_password, svn, thumbnail, url }
-    // a '/' will be prepended
-    const home: any[] = [{ name: 'scout', url: '' }]
-    const topLinks = home.concat(this.state.svnProjects)
-
-    return topLinks
-  }
-
-  private removeAllErrors() {
-    this.$store.commit('clearAllErrors')
-  }
-
-  private toggleLocale() {
-    const newLocale = this.state.locale === 'en' ? 'de' : 'en'
-    this.$store.commit('setLocale', newLocale)
-    this.$root.$i18n.locale = newLocale
-  }
-
-  private toggleTheme() {
-    this.$store.commit('rotateColors')
-  }
-
-  private get isDarkMode() {
-    return this.state.colorScheme == ColorScheme.DarkMode
-  }
-
-  // @Watch('state.isFullScreen') toggleFullScreen(isFullPage: boolean) {
-  private toggleFullScreen(isFullPage: boolean) {
-    if (isFullPage) {
-      document.body.classList.add('full-screen-page')
-      document.documentElement.style.overflowY = 'auto'
-    } else {
-      document.body.classList.remove('full-screen-page')
-      document.documentElement.style.overflowY = null as any
-    }
-  }
-}
-export default App
+    // remove the splasher after a bit
+    this.splasher = setTimeout(() => {
+      this.showSplash = false
+    }, 5000)
+  },
+  beforeDestroy() {
+    document.removeEventListener('keydown', this.toggleUIPanels)
+    window.clearTimeout(this.splasher)
+  },
+})
 </script>
 
 <style lang="scss">
-@import '@/styles.scss';
-@import '~/buefy/dist/buefy.css';
+@import '~/the-new-css-reset/css/reset.css';
+@import '~/lil-gui/dist/lil-gui.min.css';
 @import '~/maplibre-gl/dist/maplibre-gl.css';
 @import '~/vue-slider-component/theme/default.css';
+@import '~/buefy/dist/buefy.css';
+
+@import '@/styles.scss';
 
 html {
   box-sizing: border-box;
@@ -179,9 +194,10 @@ html {
 body,
 html {
   font-family: $mainFont;
-  margin: 0px 0px;
-  padding: 0px 0px;
+  // margin: 0px 0px;
+  // padding: 0px 0px;
   height: 100%;
+  // border: 0px;
   overscroll-behavior: contain;
 }
 
@@ -191,8 +207,16 @@ h3,
 h4,
 h5,
 h6 {
+  // margin: 0 0;
+  // padding: 0 0;
   font-family: $fancyFont;
 }
+
+b {
+  font-weight: bold;
+}
+
+// end null --------------------------------------
 
 html {
   overflow-y: auto;
@@ -279,7 +303,7 @@ canvas {
 }
 
 h2 {
-  font-size: 2.5rem;
+  font-size: 2rem;
   font-weight: bold;
 }
 
@@ -288,10 +312,14 @@ h3 {
   font-weight: bold;
 }
 
+h4 {
+  font-size: 1.15rem;
+}
+
 #main-app {
   display: grid;
   color: var(--text);
-  background-color: var(--bgCream);
+  background-color: var(--bgPanel2);
   grid-template-columns: 1fr;
   grid-template-rows: auto auto 1fr;
   margin: 0 0;
@@ -353,6 +381,14 @@ a:hover {
   flex-direction: row;
   position: relative;
   overflow: hidden;
+}
+
+p.splash-label {
+  text-justify: right;
+  margin: auto auto 3rem 3rem;
+  font-size: 1.5rem;
+  // font-weight: bold;
+  color: #888;
 }
 
 .nav-sidebar {
@@ -500,16 +536,17 @@ a:hover {
 
 // MapLibre Logo
 .mapboxgl-ctrl-bottom-left {
-  filter: var(--logoOpacity);
-  bottom: 1.25em;
-  right: 0.25rem;
+  filter: var(--opacityLogo);
+  color: var(--bgBold);
+  bottom: -5px;
   left: unset;
+  right: 36px;
   z-index: 0;
 }
 
 // Mapbox Improve this Map attribution
 .mapboxgl-ctrl-bottom-right {
-  filter: var(--logoOpacity);
+  filter: var(--opacityAttribution);
   right: 0rem;
   bottom: 0rem;
   left: unset;
@@ -546,7 +583,7 @@ a:hover {
 // SCROLLBARS
 /* width */
 ::-webkit-scrollbar {
-  width: 12px;
+  width: 6px;
 }
 
 /* Track */
@@ -556,7 +593,7 @@ a:hover {
 
 /* Handle */
 ::-webkit-scrollbar-thumb {
-  background: #88888888;
+  background: var(--bgScrollbar);
 }
 
 /* Handle on hover */
@@ -571,6 +608,66 @@ a:hover {
 // sankey text colors don't break thru, sigh
 .node-title {
   fill: var(--text);
+}
+
+// tweak lil-gui configurator panels
+.lil-gui {
+  --background-color: var(--bgPanel); // #00000000;
+  --title-background-color: var(--bgPanel2);
+  --widget-color: var(--bgPanel2); //white; //  #44447780;
+  --font-family: $mainFont;
+  --text-color: var(--text); // unset; // #000000aa;
+  font-size: 12px;
+}
+
+.lil-gui.root > .title {
+  background-color: var(--bgPanel2); // $appTag; // #564c9d;
+  margin-bottom: 0;
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--text);
+}
+
+// these are here because bulma/buefy style the .number class
+.lil-gui * {
+  font-size: unset;
+  border-radius: unset;
+  background-color: unset;
+  text-align: unset;
+  height: unset;
+}
+
+.flex-row {
+  display: flex;
+  flex-direction: row;
+}
+
+.flex1 {
+  flex: 1;
+}
+.flex2 {
+  flex: 2;
+}
+.flex3 {
+  flex: 3;
+}
+.flex4 {
+  flex: 4;
+}
+.flex5 {
+  flex: 5;
+}
+
+.center {
+  text-align: center;
+}
+.right {
+  text-align: right;
+}
+
+.b-input-tight input {
+  padding: 0 0.25rem;
+  font-size: 0.9rem;
 }
 
 @media only screen and (max-width: 640px) {

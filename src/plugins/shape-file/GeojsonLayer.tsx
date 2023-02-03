@@ -14,11 +14,6 @@ import GeojsonOffsetLayer from '@/layers/GeojsonOffsetLayer'
 
 import screenshots from '@/js/screenshots'
 
-// GeoJsonLayer.defaultProps = {
-//   bearing: 0,
-//   offsetDirection: OFFSET_DIRECTION.RIGHT,
-// }
-
 interface DeckObject {
   index: number
   target: number[]
@@ -27,10 +22,9 @@ interface DeckObject {
 
 export default function Component({
   viewId = 0,
-  features = [] as any[],
   fillColors = '#59a14f' as string | Uint8Array,
   lineColors = '#4e79a7' as string | Uint8Array,
-  lineWidths = 1 as number | Float32Array,
+  lineWidths = 0 as number | Float32Array,
   fillHeights = 0 as number | Float32Array,
   calculatedValues = null as null | Float32Array,
   calculatedValueLabel = '',
@@ -41,9 +35,41 @@ export default function Component({
   tooltip = [] as string[],
   featureFilter = new Float32Array(0),
 }) {
-  const mapRef = useRef<MapRef>() as any
+  // const features = globalStore.state.globalCache[viewId] as any[]
+  const [features, setFeatures] = useState([] as any[])
+
   const [viewState, setViewState] = useState(globalStore.state.viewState)
   const [screenshotCount, setScreenshot] = useState(screenshot)
+
+  const _mapRef = useRef<MapRef>() as any
+  // release _mapRef on unmount to avoid memory leak
+  // TODO: WAIT! Releasing _mapRef breaks screenshot functionality.
+  // useEffect(() => {
+  //   if (screenshot <= screenshotCount) _mapRef.current = false
+  // })
+
+  // MAP VIEW -------------------------------------------------------------------------
+  REACT_VIEW_HANDLES[viewId] = () => {
+    setViewState(globalStore.state.viewState)
+  }
+
+  // Feature setter hack:
+  // Using the array itself causes an enormous memory leak. I am not sure why
+  // Vue/React/Deck.gl are not managing this array correctly. Surely the problem
+  // is in our code, not theirs? But I spent days trying to find it.
+  // Anyway, making this deep copy of the feature array seems to solve it.
+  REACT_VIEW_HANDLES[1000 + viewId] = (features: any[]) => {
+    const fullCopy = features.map(feature => {
+      const f = {
+        type: '' + feature.type,
+        geometry: JSON.parse(JSON.stringify(feature.geometry)),
+        properties: JSON.parse(JSON.stringify(feature.properties)),
+      } as any
+      if ('id' in feature) f.id = '' + feature.id
+      return f
+    })
+    setFeatures(fullCopy)
+  }
 
   // SCREENSHOT -----------------------------------------------------------------------
   let isTakingScreenshot = screenshot > screenshotCount
@@ -124,11 +150,6 @@ export default function Component({
     }
   }
 
-  // MAP VIEW -------------------------------------------------------------------------
-  REACT_VIEW_HANDLES[viewId] = () => {
-    setViewState(globalStore.state.viewState)
-  }
-
   function handleViewState(view: any) {
     if (!view.latitude) return
     view.center = [view.longitude, view.latitude]
@@ -164,7 +185,7 @@ export default function Component({
       )
     }
 
-    // dataset elements
+    // --- dataset tooltip lines ---
     const featureTips = Object.entries(features[index].properties)
 
     let datasetProps = ''
@@ -176,7 +197,7 @@ export default function Component({
     }
     if (datasetProps) propList.push(datasetProps)
 
-    // feature elements
+    // --- boundary feature tooltip lines ---
     let columns = Object.keys(featureDataTable)
     if (tooltip && tooltip.length) {
       columns = tooltip.map(tip => {
@@ -232,7 +253,7 @@ export default function Component({
     lineWidthScale: 1,
     lineWidthMinPixels: typeof lineWidths === 'number' ? 0 : 1,
     lineWidthMaxPixels: 50,
-    // getOffset: OFFSET_DIRECTION.RIGHT,
+    getOffset: OFFSET_DIRECTION.RIGHT,
     opacity: fillHeights ? 100 : opacity / 100, // 3D must be opaque
     pickable: true,
     pointRadiusUnits: 'pixels',
@@ -240,6 +261,7 @@ export default function Component({
     // pointRadiusMaxPixels: 50,
     stroked: isStroked,
     useDevicePixels: isTakingScreenshot,
+    fp64: false,
     updateTriggers: {
       getFillColor: fillColors,
       getLineColor: lineColors,
@@ -256,10 +278,12 @@ export default function Component({
     },
     parameters: {
       depthTest: !!fillHeights,
+      fp64: false,
     },
     glOptions: {
       // https://developer.mozilla.org/en-US/docs/Web/API/HTMLCanvasElement/getContext
       preserveDrawingBuffer: true,
+      fp64: false,
     },
     // filter shapes
     extensions: [new DataFilterExtension({ filterSize: 1 })],
@@ -285,8 +309,10 @@ export default function Component({
       }
       onAfterRender={async () => {
         if (screenshot > screenshotCount) {
-          // console.log({ deckInstance })
-          await screenshots.savePNG(deckInstance.props.layers[0], mapRef?.current?.getMap()._canvas)
+          await screenshots.savePNG(
+            deckInstance.props.layers[0],
+            _mapRef?.current?.getMap()._canvas
+          )
           setScreenshot(screenshot) // update scrnshot count so we don't take 1000 screenshots by mistake :-/
         }
       }}
@@ -295,7 +321,7 @@ export default function Component({
         /*
         // @ts-ignore */
         <StaticMap
-          ref={mapRef}
+          ref={_mapRef}
           mapStyle={globalStore.getters.mapStyle}
           mapboxApiAccessToken={MAPBOX_TOKEN}
           preserveDrawingBuffer

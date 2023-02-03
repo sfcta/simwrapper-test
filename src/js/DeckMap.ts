@@ -81,6 +81,9 @@ function createCanvas(props: any) {
   Object.assign(mapboxCanvas.style, CANVAS_STYLE)
 
   const deckCanvas = document.createElement('canvas')
+  deckCanvas.width = window.innerWidth
+  deckCanvas.height = window.innerHeight
+
   deckCanvas.oncontextmenu = () => false // this disables right click on map
   container.appendChild(deckCanvas)
   Object.assign(deckCanvas.style, CANVAS_STYLE)
@@ -174,9 +177,9 @@ export default class DeckMap extends Deck {
   }
 
   finalize() {
-    if (this._map) {
-      this._map.remove()
-    }
+    if (this._map) this._map.remove()
+    this._map = null
+
     super.finalize()
   }
 
