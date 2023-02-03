@@ -57,8 +57,6 @@
               a(href="https://vsp.berlin/impressum/" target="_blank") Impressum
               a(href="https://www.vsp.tu-berlin.de/menue/service/privacy/parameter/en/" target="_blank") Privacy
 
-
-
 </template>
 
 <script lang="ts">
@@ -270,16 +268,6 @@ a {
   height: 5rem;
   margin-right: 2rem;
   margin-bottom: 3rem;
-
-  // display: grid;
-  // gap: 1.5rem;
-  // width: 5rem;
-  // grid-template-columns: repeat(auto-fill, 6.5rem);
-  // padding: 1rem 0rem;
-  // margin: 0 auto;
-  // a {
-  //   margin-top: auto;
-  // }
 }
 
 .words {

@@ -52,7 +52,6 @@ let fileSystems: FileSystemConfig[] = [
     baseURL: loc.origin + BASE_URL + 'data',
     hidden: true,
   },
-
   {
     name: 'Browse data',
     slug: 'view',
@@ -66,13 +65,6 @@ let fileSystems: FileSystemConfig[] = [
     description: 'Files on this computer, shared using "simwrapper serve" tool',
     baseURL: 'http://localhost:8000',
     thumbnail: '/simwrapper/images/thumb-localfiles.jpg',
-  },
-  {
-    name: 'SimWrapper Examples',
-    slug: 'examples',
-    description: 'Pre-built dashboards for exploration',
-    thumbnail: 'images/thumb-localfiles.jpg',
-    baseURL: 'https://svn.vsp.tu-berlin.de/repos/public-svn/shared/simwrapper',
   },
 ]
 
