@@ -5,7 +5,7 @@ import markdownPlugin from 'vite-plugin-md'
 import pluginRewriteAll from 'vite-plugin-rewrite-all'
 
 export default defineConfig({
-  base: '/simwrapper/',
+  base: '/simwrapper-test/',
   build: { sourcemap: true },
   plugins: [
     // vue
