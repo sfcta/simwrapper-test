@@ -6,10 +6,12 @@ import aggregate from './aggregate-od.vue'
 import area from './area.vue'
 import bar from './bar.vue'
 import bubble from './bubble.vue'
+import csv from './table.vue'
 import heatmap from './heatmap.vue'
 import hexagons from './hexagons.vue'
 import line from './line.vue'
 import pie from './pie.vue'
+import plotly from './plotly.vue'
 import sankey from './sankey.vue'
 import scatter from './scatter.vue'
 import slideshow from './slideshow.vue'
@@ -38,6 +40,7 @@ export const plotlyCharts = {
   line,
   markdown: text,
   pie,
+  plotly,
   sankey,
   slideshow,
   text,
